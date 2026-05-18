@@ -48,6 +48,7 @@ func New() *cobra.Command {
 		newAliasCmd(),
 		newCompletionCmd(),
 		newCollectionCmd(),
+		newCreateCmd(),
 		newGenManCmd(),
 	)
 	return root
