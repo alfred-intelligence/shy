@@ -22,13 +22,23 @@ const SchemaVersion = 1
 
 // Cache is the in-memory representation of cache.json.
 type Cache struct {
-	Schema      int                       `json:"schema"`
-	Installed   map[string]Installed      `json:"installed"`
-	Collections map[string]Subscription   `json:"collections"`
-	UpdateCheck *UpdateCheck              `json:"update_check,omitempty"`
+	Schema      int                     `json:"schema"`
+	Installed   map[string]Installed    `json:"installed"`
+	Collections map[string]Subscription `json:"collections"`
+	Plugins     []PluginEntry           `json:"plugins,omitempty"`
+	UpdateCheck *UpdateCheck            `json:"update_check,omitempty"`
 
 	path string
 	mu   sync.Mutex
+}
+
+// PluginEntry indexes one dispatchable plugin command for `shy <cmd>`.
+type PluginEntry struct {
+	Command     string `json:"command"`
+	Namespace   string `json:"namespace"`
+	Name        string `json:"name"`
+	EntryScript string `json:"entry"`
+	Description string `json:"description,omitempty"`
 }
 
 // Installed records one user-visible item — script, plugin, alias, or
@@ -177,4 +187,12 @@ func (c *Cache) DropCollection(name string) bool {
 	}
 	delete(c.Collections, name)
 	return true
+}
+
+// SetPlugins replaces the plugin index in one shot. Called by the
+// plugin package after Rebuild walks the filesystem.
+func (c *Cache) SetPlugins(p []PluginEntry) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Plugins = p
 }
