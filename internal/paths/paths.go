@@ -12,10 +12,19 @@ import (
 	"strings"
 )
 
-// SystemSeed is the system-wide read-only seed directory populated by
-// the .deb/.rpm packages. shy init copies from here into the user's
-// SHY_HOME; nothing at runtime is sourced directly from here.
-const SystemSeed = "/usr/share/shy"
+// systemSeedDefault is the FHS path .deb/.rpm packages populate. Tests
+// override it via SHY_SEED so the suite can exercise the override and
+// system-reset flows without sudo or touching the host filesystem.
+const systemSeedDefault = "/usr/share/shy"
+
+// SystemSeed returns the seed directory, honouring SHY_SEED for tests.
+// Nothing at runtime sources from here; shy init copies into SHY_HOME.
+func SystemSeed() string {
+	if v := os.Getenv("SHY_SEED"); v != "" {
+		return v
+	}
+	return systemSeedDefault
+}
 
 // BashrcSourceLine is the literal line shy init appends to ~/.bashrc.
 // Detection of an existing line is substring-based, so the form is

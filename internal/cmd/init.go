@@ -52,7 +52,7 @@ func runInit(out io.Writer) error {
 		}
 	}
 
-	copied, err := copySeed(paths.SystemSeed, home)
+	copied, err := copySeed(paths.SystemSeed(), home)
 	if err != nil {
 		return err
 	}
