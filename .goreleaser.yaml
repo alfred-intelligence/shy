@@ -3,6 +3,8 @@ version: 2
 before:
   hooks:
     - go mod tidy
+    - rm -rf build/man
+    - go run ./cmd gen-man build/man
 
 builds:
   - id: shy
@@ -41,6 +43,15 @@ nfpms:
     contents:
       - src: init/init.bash
         dst: /usr/share/shy/init.bash
+      - src: build/man/
+        dst: /usr/share/man/man1/
+        type: tree
+        file_info:
+          mode: 0644
+      - src: LICENSE
+        dst: /usr/share/doc/shy/LICENSE
+      - src: README.md
+        dst: /usr/share/doc/shy/README.md
 
 release:
   github:
