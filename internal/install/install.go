@@ -231,6 +231,9 @@ func installScriptOrPlugin(srcDir, home, namespace, name, kind, entry string, po
 }
 
 func installAlias(home, name, value string, policy ConflictPolicy, source, version string) (*cache.Installed, error) {
+	if err := validateFlatName("alias", name); err != nil {
+		return nil, err
+	}
 	dst := paths.AliasFile(home, name)
 	content := fmt.Sprintf("alias %s=%s\n", name, shellQuote(value))
 	if err := writeWithPolicy(dst, []byte(content), 0o644, policy); err != nil {
@@ -247,6 +250,9 @@ func installAlias(home, name, value string, policy ConflictPolicy, source, versi
 func installCompletion(home, tool, generate string, policy ConflictPolicy, source, version string) (*cache.Installed, error) {
 	if tool == "" || generate == "" {
 		return nil, errors.New("install: completion requires tool and generate")
+	}
+	if err := validateFlatName("completion", tool); err != nil {
+		return nil, err
 	}
 	out, err := runShell(generate)
 	if err != nil {
@@ -342,6 +348,23 @@ func copyDirShallow(src, dst string, policy ConflictPolicy) error {
 		if err := writeWithPolicy(filepath.Join(dst, e.Name()), data, mode, policy); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// validateFlatName rejects alias and completion names that would be
+// invalid or unsafe as a flat filename: empty, containing path
+// separators, equal to "." or "..", or starting with a dash (which
+// causes options-confusion in many tools).
+func validateFlatName(kind, name string) error {
+	if name == "" {
+		return fmt.Errorf("install: %s name is empty", kind)
+	}
+	if name == "." || name == ".." || strings.ContainsAny(name, "/\\") {
+		return fmt.Errorf("install: %s name %q would resolve to a directory or escape SHY_HOME", kind, name)
+	}
+	if strings.HasPrefix(name, "-") {
+		return fmt.Errorf("install: %s name %q starts with a dash; pick a name shells handle cleanly", kind, name)
 	}
 	return nil
 }

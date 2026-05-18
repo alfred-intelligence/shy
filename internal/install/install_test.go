@@ -161,6 +161,21 @@ func TestRemoveItem(t *testing.T) {
 	}
 }
 
+func TestValidateFlatName(t *testing.T) {
+	bad := []string{"", ".", "..", "../escape", "foo/bar", "-l"}
+	for _, n := range bad {
+		if err := validateFlatName("alias", n); err == nil {
+			t.Errorf("expected error for %q", n)
+		}
+	}
+	ok := []string{"ll", "gst", "kubectl", "my_thing"}
+	for _, n := range ok {
+		if err := validateFlatName("alias", n); err != nil {
+			t.Errorf("unexpected error for %q: %v", n, err)
+		}
+	}
+}
+
 func TestPolicyFromEnv(t *testing.T) {
 	t.Setenv("SHY_ON_CONFLICT", "prefer-new")
 	if PolicyFromEnv() != ConflictPreferNew {
