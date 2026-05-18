@@ -43,5 +43,5 @@ may be revised at the start of Phase B (operationalisation) once the
 repository exists and the silent operational assumptions captured in
 `01-whitepaper.md` (Assumptions for Phase B) have been confirmed.
 
-No repository pushed yet. Phase B begins when `github.com/GeGGe01/shy`
+No repository pushed yet. Phase B begins when `github.com/alfred-intelligence/shy`
 exists and the operator confirms in writing.

@@ -33,13 +33,13 @@ a plugin invoked through the `shy` binary.
 
 ## Phase 1 — Skeleton
 
-**Goal:** Repository exists at `github.com/GeGGe01/shy` with the
+**Goal:** Repository exists at `github.com/alfred-intelligence/shy` with the
 bare bones in place. Nothing functional yet; the structure is
 correct.
 
 **Done when:**
 
-- Repository created; LICENSE (MIT) and README in place
+- Repository created; LICENSE (MPL-2.0) and README in place
 - `go.mod` initialised; minimal `cli/cmd/main.go` that prints version
 - `install.sh` at repo root: detects OS/arch, fetches binary from
   GitHub Releases (even if the release is a draft), verifies SHA256,
@@ -203,6 +203,9 @@ just native code.
   `examples/plugins/hello-world/` demonstrates the contract
 - Integration test: install reference plugin, run `shy hello-world`,
   observe expected output
+- Plugin dispatch overhead measured empirically in CI; threshold
+  set at <100ms per `shy <plugin-command>` invocation on standard
+  GitHub Actions runners. Threshold violation fails the build.
 
 **Dependencies:** Phase 4 complete (manifests can declare plugins).
 
@@ -270,12 +273,12 @@ collection exists.
 
 **Done when:**
 
-- `github.com/GeGGe01/shy` is public
+- `github.com/alfred-intelligence/shy` is public
 - README explains the model in under 200 lines, with copy-paste
   install commands
 - `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`
   in repo root
-- A first stdlib collection (`github.com/GeGGe01/shy-stdlib`)
+- A first stdlib collection (`github.com/alfred-intelligence/shy-stdlib`)
   exists with 5–10 broadly useful scripts
 - Public install from a fresh VM works end-to-end
 - One demo (text-based or short video) walks through the v1.0
@@ -298,19 +301,24 @@ VM.
 - Fresh VM (Ubuntu 22.04 or similar) provisioned from scratch
 - Acceptance sequence works without intervention:
   ```bash
-  curl -fsSL https://raw.githubusercontent.com/GeGGe01/shy/main/install.sh | bash
-  sudo shy install @GeGGe01/shy-stdlib
+  curl -fsSL https://raw.githubusercontent.com/alfred-intelligence/shy/main/install.sh | bash
+  sudo shy install @alfred-intelligence/shy-stdlib
   shy init
   shy create my-first-script   # opens $EDITOR; user types echo "OK"; saves
   shy publish my-first-script  # generates manifest.toml
   shy-reload                   # picks up the new script
   my-first-script              # outputs "OK"
   ```
-- A reference plugin (e.g. `@GeGGe01/shy-gh-clone`) installs and
+- A reference plugin (e.g. `@alfred-intelligence/shy-gh-clone`) installs and
   invokes as `shy gh-clone <repo>`
 - All Phase 1–8 done-criteria still hold
 - `CHANGELOG.md` summarises what changed since v0.9
 - Tag `v1.0.0` pushed; GoReleaser produces release artefacts
+- Container-based acceptance test (see `06-ci-cd-plan.md`,
+  `acceptance.yml`) passes across the OS compatibility matrix.
+  This is the automated counterpart to the manual fresh-VM test —
+  ensures the same sequence works on every supported distribution
+  without operator intervention.
 
 **Dependencies:** Phase 8 feedback addressed.
 
@@ -324,7 +332,7 @@ end point.
 
 **Areas:**
 
-- **`@GeGGe01/shy-audit` is the priority plugin.** Static analysis
+- **`@alfred-intelligence/shy-audit` is the priority plugin.** Static analysis
   of installed scripts and plugins against suspicious patterns
   (eval of untrusted input, network calls to undeclared hosts,
   reads of sensitive paths, subprocess spawns to undeclared
@@ -339,10 +347,10 @@ end point.
   Trigger: when abuse patterns are documented (an author tagging
   non-security updates as security to force notifications).
 - **Plugins shipped early:**
-  - `@GeGGe01/shy-auto-completions` — weekly scanner that detects
+  - `@alfred-intelligence/shy-auto-completions` — weekly scanner that detects
     new tools on `$PATH` and installs their completions
-  - `@GeGGe01/shy-gh-clone` — clone GitHub repos with default org
-  - `@GeGGe01/shy-auto-clone` — clone subscribed collections to a
+  - `@alfred-intelligence/shy-gh-clone` — clone GitHub repos with default org
+  - `@alfred-intelligence/shy-auto-clone` — clone subscribed collections to a
     configurable local directory for editing
 - **Plugin sandboxing via bubblewrap/firejail** (v2). Built when
   `shy audit` reveals consistent gaps between declared
@@ -350,8 +358,8 @@ end point.
   exec for plugins; sourced scripts remain unsandboxed by
   architecture.
 - **Stdlib expansion** with broadly useful scripts contributed
-  through PRs to `GeGGe01/shy-stdlib`
-- **Documentation polish**: hosted docs at `shy.geGGe01.io`
+  through PRs to `alfred-intelligence/shy-stdlib`
+- **Documentation polish**: hosted docs at `shy.alfred-intelligence.io`
 - **Additional distribution targets** (AUR, Homebrew, NixOS) as
   community contributions
 - **GPG signing for binary releases** when the user base warrants

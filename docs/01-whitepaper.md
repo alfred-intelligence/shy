@@ -167,8 +167,8 @@ A script lives at `$HOME/.shy/scripts/<namespace>/<name>/<name>.sh`.
 The `<namespace>` comes from:
 
 - **Published items**: `<namespace>` is the author handle from the
-  manifest's `[source].repo` (e.g., `GeGGe01` from
-  `GeGGe01/git-autofetch`).
+  manifest's `[source].repo` (e.g., `alice` from
+  `alice/git-autofetch`).
 - **Locally created items**: `<namespace>` is the safe-name of
   `$HOSTNAME`. Safe-name is lowercase, `a-z0-9-` only, `.local`
   suffix stripped. `MacBook-Pro-2.local` becomes `macbook-pro-2`.
@@ -176,8 +176,8 @@ The `<namespace>` comes from:
   name of `$HOSTNAME` for the namespace.
 
 This means two collections can publish scripts with the same name
-without filesystem collision: `scripts/GeGGe01/git-autofetch/` and
-`scripts/iamgegg/git-autofetch/` coexist as distinct installations.
+without filesystem collision: `scripts/alice/git-autofetch/` and
+`scripts/bob/git-autofetch/` coexist as distinct installations.
 
 **Aliases and completions are not namespaced — by design.** An
 alias is one thing at a time (the last-defined `ll` wins; you
@@ -231,7 +231,7 @@ helper files that the entry script sources internally but which
 should not be globally sourced into the user's shell.
 
 ```
-scripts/GeGGe01/git-autofetch/
+scripts/alice/git-autofetch/
 ├── git-autofetch.sh         ← entry, sourced by init.bash
 ├── _is-git-repo.sh          ← helper, skipped by init.bash
 └── _fetch-async.sh          ← helper, skipped by init.bash
@@ -266,7 +266,7 @@ type = "script"
 entry = "./git-autofetch.sh"
 
 [source]
-repo = "GeGGe01/git-autofetch"
+repo = "alice/git-autofetch"
 
 [requires]
 bash = ">=4"
@@ -276,22 +276,22 @@ binaries = ["git"]
 Minimal collection form:
 
 ```toml
-name = "GeGGe01-default"
+name = "alice-default"
 version = "2.5.0"
 description = "My personal shy setup"
 
 [source]
-repo = "GeGGe01/shy-setup"
+repo = "alfred-intelligence/shy-setup"
 ```
 
 Explicit collection with inline items:
 
 ```toml
-name = "GeGGe01-default"
+name = "alice-default"
 version = "2.5.0"
 
 [source]
-repo = "GeGGe01/shy-setup"
+repo = "alfred-intelligence/shy-setup"
 
 [[items]]
 name = "git-autofetch"
@@ -319,7 +319,7 @@ tool = "kubectl"
 generate = "kubectl completion bash"
 
 [[dependencies]]
-source = "github:iamgegg/git-helpers"
+source = "github:bob/git-helpers"
 constraint = "^1.0"
 type = "required"
 
@@ -403,7 +403,7 @@ writes `manifest.toml`, and moves the directory to its namespace.
 $ shy publish my-script
 shy: initializing git in ~/.shy/scripts/macbook-pro-2/my-script/
 shy: committed initial state.
-shy: namespace will be GeGGe01 (from git config user.name).
+shy: namespace will be alice (from git config user.name).
 shy: prompting for manifest details...
 
 Description: A wrapper around cd that fetches in git repos
@@ -411,7 +411,7 @@ License [MIT]: <enter>
 Version [0.1.0]: <enter>
 
 shy: written manifest.toml
-shy: moved to ~/.shy/scripts/GeGGe01/my-script/
+shy: moved to ~/.shy/scripts/alice/my-script/
 ```
 
 **State 2 — Script is its own git repo root (minor, inform and
@@ -618,8 +618,8 @@ API — no dependency on `gh` or any external CLI.
 ```
 $ shy list
 SCRIPTS:
-  GeGGe01/git-autofetch       1.0.0    Run git fetch on cd
-  iamgegg/cool-helper         2.1.0    A useful helper
+  alice/git-autofetch       1.0.0    Run git fetch on cd
+  bob/cool-helper         2.1.0    A useful helper
 
 shy: 1 update available — run `shy outdated` to view.
 ```
@@ -645,9 +645,9 @@ are displayed prominently:
 ```
 $ shy list
 SCRIPTS:
-  GeGGe01/git-autofetch       1.0.0    Run git fetch on cd
+  alice/git-autofetch       1.0.0    Run git fetch on cd
 
-⚠ security update available: GeGGe01/git-autofetch 1.0.0 → 1.0.1
+⚠ security update available: alice/git-autofetch 1.0.0 → 1.0.1
   CVE-2026-12345 (high) — Fix path traversal in cd-tree handler
   Run `shy collection update --security` to apply.
 ```
@@ -678,7 +678,7 @@ that wants documentation places a `README.md` next to its
 `manifest.toml` (the standard npm/pip/cargo convention).
 
 ```
-scripts/GeGGe01/git-autofetch/
+scripts/alice/git-autofetch/
 ├── git-autofetch.sh
 ├── manifest.toml
 └── README.md
@@ -687,7 +687,7 @@ scripts/GeGGe01/git-autofetch/
 For larger documentation that needs multiple files:
 
 ```
-plugins/GeGGe01/big-plugin/
+plugins/alice/big-plugin/
 ├── big-plugin.sh
 ├── manifest.toml
 ├── README.md           ← entry, short intro
@@ -940,7 +940,7 @@ Reserved future directions, in rough priority order:
 - **GPG signing for binary releases** (v2).
 - **Layer 2 — Convention namespace** (v2). `[[conformance]]`
   sub-schema for cross-ecosystem snippet portability.
-- **Auto-completions plugin** (v1.x). `@GeGGe01/auto-completions`.
+- **Auto-completions plugin** (v1.x). `@alfred-intelligence/auto-completions`.
 - **Zsh and fish support** (v2+).
 
 Daemon mode is a hypothetical v3, gated on the specific triggers in
@@ -948,15 +948,28 @@ the security section.
 
 ## Assumptions for Phase B
 
-These were assessed silently during Phase A and are recorded here
-so they survive into Phase B operationalisation.
+These were assessed silently during Phase A and have been confirmed
+at the start of Phase B operationalisation.
 
-- **Licence: MIT.**
-- **Strictness level: `solo+contrib`.**
-- **Branch strategy: trunk-based.** `main` always releasable.
-- **Release cadence:** Tagged releases via GoReleaser, automated
-  versioning via release-please.
-- **Conventional Commits.**
-- **`CODE_OF_CONDUCT.md` and `SECURITY.md`: yes.**
-- **`CONTRIBUTING.md`: short.**
-- **Repository home: `github.com/GeGGe01/shy`.**
+- **Licence: MPL-2.0.** File-level copyleft; preserves shy as open
+  source while allowing plugin/integration code to use any licence.
+- **Strictness level: `solo+contrib`.** Operator-primary; external
+  PRs welcome but not the default audience.
+- **Branch strategy:** stable/next pattern. `main` is stable and
+  reflects the latest tagged release; `next` is active development
+  and the default branch for PRs. Release-please runs on `next`;
+  post-release workflow merges `next` → `main` automatically.
+  Hotfixes cherry-pick to `next` and follow the standard release
+  flow.
+- **Release cadence:** tagged releases via GoReleaser, automated
+  versioning via release-please. No fixed schedule.
+- **Conventional Commits** for changelog generation.
+- **`CODE_OF_CONDUCT.md` and `SECURITY.md`:** present from the
+  start, even during private phase.
+- **`CONTRIBUTING.md`:** short.
+- **Repository: `github.com/alfred-intelligence/shy`.** Organisation
+  namespace, not personal.
+- **Visibility:** private during v0.x development. Repository
+  becomes public at v1.0 release. All public-facing documentation
+  (README, CODE_OF_CONDUCT, SECURITY, CONTRIBUTING, issue templates)
+  is written for public context and waits in repo until release.

@@ -20,21 +20,21 @@ their dependencies are met.
 
 ## Step 1 — Create repository
 
-**Task:** Create `github.com/GeGGe01/shy` as a public repository
+**Task:** Create `github.com/alfred-intelligence/shy` as a public repository
 with the minimum scaffolding to start committing.
 
 **Commands:**
 
 ```bash
-gh repo create GeGGe01/shy --public \
+gh repo create alfred-intelligence/shy --public \
     --description "Small Shell Utility — bash snippet, alias, completion manager"
 
-git clone git@github.com:GeGGe01/shy.git
+git clone git@github.com:alfred-intelligence/shy.git
 cd shy
 
 # Initial files
 echo "# shy" > README.md
-echo "MIT" > LICENSE-PLACEHOLDER   # [B-CONFIRM] real LICENSE in Phase B
+cp ~/shy-design/bootstrap/LICENSE LICENSE   # MPL-2.0 from bootstrap
 echo "/dist/" > .gitignore
 echo "*.test" >> .gitignore
 
@@ -45,7 +45,7 @@ git push origin main
 
 **Done when:**
 
-- Repository visible at `https://github.com/GeGGe01/shy`
+- Repository visible at `https://github.com/alfred-intelligence/shy`
 - README and `.gitignore` committed on `main`
 
 ---
@@ -57,7 +57,7 @@ git push origin main
 **Commands:**
 
 ```bash
-go mod init github.com/GeGGe01/shy/cli
+go mod init github.com/alfred-intelligence/shy/cli
 
 mkdir -p cli/cmd cli/internal
 cat > cli/cmd/main.go << 'EOF'
@@ -178,7 +178,7 @@ set -euo pipefail
 
 VERSION="${SHY_VERSION:-latest}"
 PREFIX="${SHY_HOME:-$HOME/.shy}"
-REPO="GeGGe01/shy"
+REPO="alfred-intelligence/shy"
 
 # Detect OS and architecture.
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -275,11 +275,11 @@ checksum:
 nfpms:
   - id: packages
     package_name: shy
-    vendor: GeGGe01
-    homepage: https://github.com/GeGGe01/shy
-    maintainer: GeGGe01 <noreply@example.com>   # [B-CONFIRM] real email
+    vendor: alfred-intelligence
+    homepage: https://github.com/alfred-intelligence/shy
+    maintainer: alfred-intelligence <alfred@gegge.se>
     description: Small Shell Utility — bash snippet, alias, completion manager
-    license: MIT
+    license: MPL-2.0
     formats: [deb, rpm]
     bindir: /usr/bin
     contents:
@@ -291,7 +291,7 @@ nfpms:
 
 release:
   github:
-    owner: GeGGe01
+    owner: alfred-intelligence
     name: shy
 
 snapshot:
@@ -449,7 +449,7 @@ the binary, and `shy --version` works.
 
 ```bash
 # Should pull the draft release and install it.
-curl -fsSL https://raw.githubusercontent.com/GeGGe01/shy/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/alfred-intelligence/shy/main/install.sh | bash
 
 # Verify.
 ~/.shy/bin/shy
@@ -561,13 +561,13 @@ type = "script"
 entry = "./git-autofetch.sh"
 
 [source]
-repo = "GeGGe01/git-autofetch"
+repo = "alice/git-autofetch"
 `)
     m, err := Parse(data)
     if err != nil { t.Fatal(err) }
     if m.Name != "git-autofetch" { t.Errorf("name: %s", m.Name) }
     if m.Type != "script" { t.Errorf("type: %s", m.Type) }
-    if m.Source == nil || m.Source.Repo != "GeGGe01/git-autofetch" {
+    if m.Source == nil || m.Source.Repo != "alice/git-autofetch" {
         t.Errorf("source not parsed: %+v", m.Source)
     }
 }
@@ -664,7 +664,7 @@ bundles. Defer URL and `@user/repo` syntax to Step 15.
 - Parse manifest from `<path>/manifest.toml`
 - Determine installation namespace:
   - If `[source].repo` exists in manifest, extract author part
-    (e.g., `GeGGe01` from `GeGGe01/git-autofetch`) → use as
+    (e.g., `alice` from `alice/git-autofetch`) → use as
     namespace
   - Otherwise, derive safe-name from `$HOSTNAME` (lowercase,
     `a-z0-9-` only, `.local` suffix stripped) → use as namespace
@@ -726,7 +726,7 @@ When Steps 1–19 are complete:
 
 ```bash
 # On a clean machine:
-curl -fsSL https://raw.githubusercontent.com/GeGGe01/shy/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/alfred-intelligence/shy/main/install.sh | bash
 shy init
 shy alias 'll=ls -alh'
 shy completion add gh
