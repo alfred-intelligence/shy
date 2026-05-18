@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: next
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "gomod"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: next
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "ci"]
