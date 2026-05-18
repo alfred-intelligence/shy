@@ -1,0 +1,20 @@
+name = "hello-world"
+version = "0.1.0"
+description = "Minimal reference plugin demonstrating the shy plugin contract."
+license = "MPL-2.0"
+type = "plugin"
+command = "hello-world"
+entry = "./hello-world.sh"
+
+[source]
+repo = "alfred-intelligence/shy/examples/plugins/hello-world"
+
+[requires]
+bash = ">=4"
+
+[capabilities]
+# Reserved for v2 sandboxing; v1 parses and ignores. Declared here as
+# documentation for plugin authors.
+binaries = []
+network = []
+filesystem = []
