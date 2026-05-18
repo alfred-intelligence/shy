@@ -51,6 +51,7 @@ func New() *cobra.Command {
 		newCreateCmd(),
 		newPublishCmd(),
 		newOverrideCmd(),
+		newSystemResetCmd(),
 		newGenManCmd(),
 	)
 	installPluginHelp(root)
