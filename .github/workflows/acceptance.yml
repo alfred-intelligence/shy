@@ -1,0 +1,66 @@
+name: Acceptance
+
+on:
+  push:
+    branches: [main, next]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 0"   # Sunday 06:00 UTC — catches upstream image drift
+
+permissions:
+  contents: read
+
+jobs:
+  containers:
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: ubuntu-22.04
+            image: ubuntu:22.04
+          - label: ubuntu-24.04
+            image: ubuntu:24.04
+          - label: debian-12
+            image: debian:12
+          - label: fedora-40
+            image: fedora:40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build shy
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -o dist/shy ./cmd
+      - name: Run acceptance inside ${{ matrix.label }}
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" -w /src \
+            -e SHY_BIN=/src/dist/shy \
+            ${{ matrix.image }} bash -c '
+              set -euo pipefail
+              if command -v apt-get >/dev/null 2>&1; then
+                apt-get update -qq
+                apt-get install -y -qq git curl ca-certificates bash >/dev/null
+              elif command -v dnf >/dev/null 2>&1; then
+                dnf install -y -q git curl ca-certificates bash >/dev/null
+              fi
+              ./scripts/acceptance-happy-path.sh
+              ./scripts/acceptance-negative-path.sh
+            '
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build -o dist/shy ./cmd
+      - run: |
+          ./scripts/acceptance-happy-path.sh
+          ./scripts/acceptance-negative-path.sh
