@@ -52,6 +52,7 @@ func New() *cobra.Command {
 		newPublishCmd(),
 		newGenManCmd(),
 	)
+	installPluginHelp(root)
 	return root
 }
 
