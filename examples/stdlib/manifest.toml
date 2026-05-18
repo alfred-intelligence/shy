@@ -1,0 +1,49 @@
+name = "shy-stdlib"
+version = "0.1.0"
+description = "A small set of broadly useful shell snippets curated for shy."
+license = "MPL-2.0"
+
+[source]
+repo = "alfred-intelligence/shy-stdlib"
+
+[[items]]
+name = "mkcd"
+type = "script"
+path = "./scripts/mkcd.sh"
+description = "mkdir -p and cd into the new directory in one step"
+
+[[items]]
+name = "extract"
+type = "script"
+path = "./scripts/extract.sh"
+description = "Extract any archive based on its extension"
+
+[[items]]
+name = "serve"
+type = "script"
+path = "./scripts/serve.sh"
+description = "Serve the current directory over HTTP via python3 -m http.server"
+
+[[items]]
+name = "path-list"
+type = "script"
+path = "./scripts/path-list.sh"
+description = "Print PATH one entry per line"
+
+[[items]]
+name = "up"
+type = "script"
+path = "./scripts/up.sh"
+description = "cd up N parent directories"
+
+[[items]]
+name = "gst"
+type = "alias"
+value = "git status -sb"
+
+[aliases]
+ll = "ls -alh --color=auto"
+la = "ls -A --color=auto"
+
+[requires]
+bash = ">=4"
