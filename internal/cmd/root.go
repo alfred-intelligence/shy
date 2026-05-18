@@ -49,6 +49,7 @@ func New() *cobra.Command {
 		newCompletionCmd(),
 		newCollectionCmd(),
 		newCreateCmd(),
+		newPublishCmd(),
 		newGenManCmd(),
 	)
 	return root
