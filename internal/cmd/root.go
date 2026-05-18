@@ -56,9 +56,15 @@ func New() *cobra.Command {
 }
 
 // Execute runs the CLI with the given context, returning the process
-// exit code.
+// exit code. Before cobra parses, the first non-flag argument is
+// matched against the plugin index; if it's a plugin command (and not
+// also a native one), the plugin script is exec'd with the remaining
+// arguments inheriting the operator's environment.
 func Execute(ctx context.Context) int {
 	root := New()
+	if code, handled := tryDispatchPlugin(os.Args[1:], root); handled {
+		return code
+	}
 	if err := root.ExecuteContext(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "shy: %v\n", err)
 		return 1

@@ -324,11 +324,22 @@ func copyDirShallow(src, dst string, policy ConflictPolicy) error {
 		if e.IsDir() {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(src, e.Name()))
+		srcPath := filepath.Join(src, e.Name())
+		info, err := os.Stat(srcPath)
+		if err != nil {
+			return fmt.Errorf("install: stat %s: %w", srcPath, err)
+		}
+		data, err := os.ReadFile(srcPath)
 		if err != nil {
 			return fmt.Errorf("install: read %s: %w", e.Name(), err)
 		}
-		if err := writeWithPolicy(filepath.Join(dst, e.Name()), data, 0o644, policy); err != nil {
+		// Preserve the executable bit when copying scripts so plugin
+		// entry scripts can be exec'd; data files keep 0o644.
+		mode := os.FileMode(0o644)
+		if info.Mode()&0o111 != 0 {
+			mode = 0o755
+		}
+		if err := writeWithPolicy(filepath.Join(dst, e.Name()), data, mode, policy); err != nil {
 			return err
 		}
 	}
