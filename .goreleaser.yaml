@@ -1,0 +1,53 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: shy
+    main: ./cmd
+    binary: shy
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: shy
+    name_template: >-
+      shy_{{ .Version }}_{{ .Os }}_{{ if eq .Arch "amd64" }}amd64{{ else if eq .Arch "arm64" }}arm64{{ end }}
+    formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  algorithm: sha256
+  split: true
+
+nfpms:
+  - id: packages
+    package_name: shy
+    vendor: alfred-intelligence
+    homepage: https://github.com/alfred-intelligence/shy
+    maintainer: alfred-intelligence <alfred@gegge.se>
+    description: Small Shell Utility — bash snippet, alias, completion manager.
+    license: MPL-2.0
+    formats: [deb, rpm]
+    bindir: /usr/bin
+    contents:
+      - src: init/init.bash
+        dst: /usr/share/shy/init.bash
+
+release:
+  github:
+    owner: alfred-intelligence
+    name: shy
+  draft: false
+  prerelease: auto
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
