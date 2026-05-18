@@ -11,6 +11,7 @@ import (
 	"github.com/alfred-intelligence/shy/internal/cache"
 	"github.com/alfred-intelligence/shy/internal/install"
 	"github.com/alfred-intelligence/shy/internal/paths"
+	"github.com/alfred-intelligence/shy/internal/plugin"
 )
 
 func newUpdateCmd() *cobra.Command {
@@ -80,6 +81,9 @@ func runUpdate(out io.Writer, target string) error {
 		cleanup()
 		updated++
 		fmt.Fprintf(out, "  ✓ %s\n", it.Source)
+	}
+	if err := plugin.Rebuild(home, c); err != nil {
+		return err
 	}
 	if err := c.Save(); err != nil {
 		return err

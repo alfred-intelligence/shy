@@ -14,6 +14,7 @@ import (
 	"github.com/alfred-intelligence/shy/internal/cache"
 	"github.com/alfred-intelligence/shy/internal/install"
 	"github.com/alfred-intelligence/shy/internal/paths"
+	"github.com/alfred-intelligence/shy/internal/plugin"
 )
 
 func newInstallCmd() *cobra.Command {
@@ -64,6 +65,9 @@ func runInstall(spec string, trackMain, silent bool, out interface{ Write([]byte
 	}
 	res, err := install.Bundle(dir, opts, c)
 	if err != nil {
+		return err
+	}
+	if err := plugin.Rebuild(home, c); err != nil {
 		return err
 	}
 	if err := c.Save(); err != nil {

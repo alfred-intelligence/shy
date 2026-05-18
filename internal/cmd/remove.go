@@ -12,6 +12,7 @@ import (
 	"github.com/alfred-intelligence/shy/internal/cache"
 	"github.com/alfred-intelligence/shy/internal/install"
 	"github.com/alfred-intelligence/shy/internal/paths"
+	"github.com/alfred-intelligence/shy/internal/plugin"
 )
 
 func newRemoveCmd() *cobra.Command {
@@ -45,6 +46,9 @@ func runRemove(out io.Writer, ref string, silent bool) error {
 	}
 	removed, err := install.RemoveItem(home, kind, ns, name, c)
 	if err != nil {
+		return err
+	}
+	if err := plugin.Rebuild(home, c); err != nil {
 		return err
 	}
 	if err := c.Save(); err != nil {

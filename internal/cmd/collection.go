@@ -12,6 +12,7 @@ import (
 	"github.com/alfred-intelligence/shy/internal/collection"
 	"github.com/alfred-intelligence/shy/internal/install"
 	"github.com/alfred-intelligence/shy/internal/paths"
+	"github.com/alfred-intelligence/shy/internal/plugin"
 )
 
 func newCollectionCmd() *cobra.Command {
@@ -49,6 +50,9 @@ func newCollectionSubscribeCmd() *cobra.Command {
 				Policy: install.PolicyFromEnv(),
 			}, c)
 			if err != nil {
+				return err
+			}
+			if err := plugin.Rebuild(home, c); err != nil {
 				return err
 			}
 			if err := c.Save(); err != nil {
@@ -135,6 +139,9 @@ func newCollectionUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := plugin.Rebuild(home, c); err != nil {
+				return err
+			}
 			if err := c.Save(); err != nil {
 				return err
 			}
@@ -183,6 +190,9 @@ func newCollectionUnsubscribeCmd() *cobra.Command {
 			}
 			removed, err := collection.Unsubscribe(home, args[0], c)
 			if err != nil {
+				return err
+			}
+			if err := plugin.Rebuild(home, c); err != nil {
 				return err
 			}
 			if err := c.Save(); err != nil {
