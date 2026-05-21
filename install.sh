@@ -88,6 +88,24 @@ tar -xzf "$tmp/$asset" -C "$tmp" shy
 install -m 0755 "$tmp/shy" "$PREFIX/bin/shy.new"
 mv -f "$PREFIX/bin/shy.new" "$PREFIX/bin/shy"
 
+# Symlink shy into a standard personal bin directory so it is reachable
+# without relying on init.bash being sourced (other shells, scripts, sudo -u).
+# Prefer ~/.local/bin (XDG), then ~/bin; create ~/.local/bin if neither exists.
+_shy_link_to_path() {
+    local target="$PREFIX/bin/shy"
+    local dir
+    for dir in "$HOME/.local/bin" "$HOME/bin"; do
+        if [[ -d "$dir" ]]; then
+            ln -sf "$target" "$dir/shy" 2>/dev/null && return 0
+        fi
+    done
+    if mkdir -p "$HOME/.local/bin" 2>/dev/null; then
+        ln -sf "$target" "$HOME/.local/bin/shy" 2>/dev/null || true
+    fi
+}
+_shy_link_to_path
+unset -f _shy_link_to_path
+
 "$PREFIX/bin/shy" init
 
 echo "shy: $VERSION installed at $PREFIX/bin/shy"

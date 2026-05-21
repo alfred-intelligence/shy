@@ -4,7 +4,8 @@ name: Benchmarks
 on:
   pull_request:
     paths:
-      - 'cli/**'
+      - 'internal/**'
+      - 'cmd/**'
       - '.github/workflows/bench.yml'
 
 permissions:
@@ -24,7 +25,7 @@ jobs:
       - name: Run benchmarks
         run: |
           go test -bench=. -benchmem -count=5 -run='^$' \
-            ./cli/internal/... | tee bench-output.txt
+            ./internal/... | tee bench-output.txt
 
       - name: Compare against main baseline
         uses: benchmark-action/github-action-benchmark@v1
