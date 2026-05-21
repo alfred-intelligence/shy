@@ -1,0 +1,34 @@
+# Agent of Empires - Repository Configuration
+# This file configures aoe behavior for this repository.
+# See: https://github.com/njbrake/agent-of-empires
+
+# [hooks]
+# Commands run once when a session is first created
+# on_create = ["npm install", "cp .env.example .env"]
+# Commands run every time a session starts
+# on_launch = ["npm install"]
+# Commands run when a session is deleted (before cleanup)
+# on_destroy = ["docker-compose down"]
+
+# [session]
+# default_tool = "claude"
+
+# [sandbox]
+# enabled_by_default = true
+# default_image = "ghcr.io/njbrake/aoe-dev-sandbox:0.10"
+# List fields below replace (not append to) global settings when set:
+# environment = ["NODE_ENV", "DATABASE_URL"]
+# volume_ignores = ["node_modules", ".next"]
+
+# [worktree]
+# enabled = true
+
+# [updates]
+# check_enabled = false
+
+# [tmux]
+# status_bar = "auto"
+# mouse = "auto"
+
+# [sound]
+# enabled = false

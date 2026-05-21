@@ -30,19 +30,58 @@ The `LICENSE` file at the repo root contains the full MPL-2.0
 text. Every Go source file has a short `// SPDX-License-
 Identifier: MPL-2.0` header for tooling.
 
+**Documentation licence: CC-BY-SA 4.0.**
+
+The whitepaper, design documents, and other documentation in the
+repository (markdown under `docs/`, design files under
+`shy-design/` or equivalent) are licensed under Creative Commons
+Attribution-ShareAlike 4.0 International (CC-BY-SA 4.0). This is
+symmetric with MPL-2.0's copyleft principle: work derived from
+shy's documentation must remain under the same licence and credit
+the source.
+
+The `LICENSE-docs` file at the repo root contains the CC-BY-SA 4.0
+text or links to https://creativecommons.org/licenses/by-sa/4.0/.
+A short notice at the top of `docs/` (and equivalent design
+directories) clarifies which licence applies.
+
 ## Branch strategy
 
-**Stable/next pattern.**
+**Four-branch time-sequenced model.**
+
+Each branch represents a position on the time-axis of the project:
 
 - **`main`** — stable. Reflects the latest tagged release. Default
   branch shown on GitHub. Read-only in practice: only the post-
   release automation pushes to it (and operator overrides for
   emergencies).
-- **`next`** — active development. PRs target `next`. Release-
-  please runs on `next` and maintains a release-PR with the
-  pending changelog and version bump.
+- **`next`** — active development for the *next* upcoming release.
+  PRs target `next`. Release-please runs on `next` and maintains a
+  release-PR with the pending changelog and version bump.
+- **`after`** — experimental work for releases *after* the next
+  one. Long-horizon features that aren't ready for the upcoming
+  release land here. Code here may not stabilise for months. No
+  release-please; no automatic version bumping. Cherry-picked into
+  `next` when ready.
+- **`before`** — backport branch for fixes that need to land in
+  earlier stable releases (e.g., a CVE fix that must be applied to
+  `v1.0.x` after `v1.1` has shipped). Release-please runs on
+  `before` and tags `v<major>.<minor>.<patch+1>` releases off it.
+  Inactive when no older releases need maintenance.
 
-Lifecycle of a change:
+The branches don't all need to exist from day one:
+
+- **`main`** + **`next`** exist from project start (Phase 1 in
+  long-horizon).
+- **`after`** is created when v2-workspace-arbete (or any v2+
+  feature work that runs in parallel with v1.x maintenance)
+  begins. Practically: at the start of Phase 1, since shy v2 work
+  may begin before shy v1.0 ships.
+- **`before`** is created only when v1.0 has shipped *and* a
+  bugfix needs to be backported. It is short-lived per backport
+  effort and can be deleted between backports if desired.
+
+Lifecycle of a change (normal path):
 
 1. Feature branch (`feat/<scope>` or `fix/<scope>`) branches from
    `next`.
@@ -58,14 +97,81 @@ Lifecycle of a change:
 6. `main` now reflects the new release; `next` continues
    development.
 
-**Hotfix flow.** A hotfix is a `fix:` commit on a hotfix branch
-from `next` (not from `main` — we don't maintain old release
-branches in v1). The branch follows the normal PR flow into
-`next`, and release-please patches the version. If `main` and
-`next` have diverged significantly when a critical fix is needed,
-the operator cherry-picks the fix to a temporary branch from
-`main`, releases a patch, and reconciles `next` afterward. This
-should be rare.
+Lifecycle of long-horizon work (using `after`):
+
+1. Feature branch (`feat/<scope>`) branches from `after`.
+2. PR opened against `after`. CI runs but is less strict
+   (acceptance tests are advisory, not blocking).
+3. Work iterates on `after` over weeks or months.
+4. When ready for release, the operator cherry-picks (or merges
+   with care) the work from `after` into `next`. Release-please
+   then handles versioning normally.
+5. `after` continues with its own diverged history; periodic
+   rebases against `next` may be needed to avoid drift.
+
+Lifecycle of a backport (using `before`):
+
+1. A fix is needed for an older stable release (e.g., a CVE
+   discovered in `v1.0.2` after `v1.1.0` has shipped).
+2. Operator creates or revives `before` branched from the relevant
+   stable tag (`git checkout -b before v1.0.2`).
+3. Cherry-picks the fix commit from `next` (where the fix was
+   originally landed).
+4. PR opened against `before` with the cherry-picked fix.
+5. CI runs (full CI + acceptance) against the cherry-picked
+   version.
+6. Release-please on `before` generates a patch release
+   (`v1.0.3`).
+7. Operator merges the release-PR; release-please tags and
+   releases.
+8. `before` can be deleted or kept dormant until the next backport
+   need.
+
+**Cross-branch cherry-pick policy.** When a fix is needed in
+multiple branches, operator discipline determines flow. Typical
+patterns:
+
+- Bug in `next` that should also be in `before`: cherry-pick to
+  `before` after fix lands in `next`.
+- Feature in `after` that should also land in `next`: cherry-pick
+  (or careful merge) when ready. Avoid merging entire `after`
+  into `next` — that pulls in unfinished work.
+- Documentation fix: usually only `next`. Backporting docs to
+  `before` is allowed but optional.
+
+This is operator discipline, not automation. Document the
+decisions in PR descriptions for audit trail.
+
+## Pre-1.0 phase (v0.x) operator privileges
+
+During v0.x development (before v1.0 is tagged), strict branch
+protection is **not** enforced for the operator. This is a
+practical concession to the bootstrapping phase: the operator
+needs flexibility to push design documents, scaffolding, and CI
+configuration directly to `main` without ceremony.
+
+Concretely during v0.x:
+
+- The operator may push documentation and scaffolding directly to
+  `main`. This is allowed because no formal release exists yet and
+  the `next` → `main` synchronisation that protects releases hasn't
+  begun.
+- Branch protection rules described in this document apply to
+  external contributors and to merge-via-PR enforcement; they do
+  not block operator direct-push during v0.x.
+- The `next` branch becomes the dev target as soon as `v0.2-pre`
+  (or whatever pre-release exists) is in place and release-please
+  starts maintaining a release-PR there.
+
+**From v1.0 onward**, strict protection is enforced. The operator
+loses direct-push privileges on `main`. All changes to `main` flow
+via the post-release-sync automation. The operator can still push
+docs directly to `next` (via path-based exemption — see below) but
+not to `main`.
+
+This is explicit operator privilege during v0.x, not a permanent
+override. The intent is to support the bootstrapping phase without
+fighting branch protection over every initial commit.
 
 ## Path-based branch protection
 
@@ -119,7 +225,40 @@ This means:
 - External contributors always use PR regardless of path (they
   don't have push permission).
 
-The `branch-protection.json` in bootstrap implements this.
+**`after` protection (relaxed):**
+
+PRs targeting `after` require CI but acceptance tests are
+*advisory* — they run and report but don't block merge. The intent
+is experimental velocity: try things, observe behavior, iterate.
+
+Required status checks: `go-test`, `go-lint`, `shell-lint`.
+Acceptance tests run for visibility but failure does not block.
+
+Direct push is permitted for all paths on `after` — it is the
+operator's experimental playground.
+
+**`before` protection (strict):**
+
+PRs targeting `before` require passing CI **and** acceptance tests
+across the OS matrix. The whole point of `before` is releasing
+backport fixes that must be at least as well-tested as the
+original release.
+
+Required status checks: full CI + full acceptance matrix.
+
+Direct push is **not** permitted on `before` even for the
+operator. All backports go via PR for traceability — when a CVE
+is being backported, the audit trail must be complete.
+
+**Note on `after` and `before` non-existence.** When these branches
+don't exist (which is the default state until they're needed), no
+protection rules need to be configured. The bootstrap
+`branch-protection.json` includes rules for all four branches; the
+operator applies the rules selectively via `gh api` when each
+branch is created.
+
+The `branch-protection.json` in bootstrap implements all four
+configurations.
 
 ## Commit conventions
 
@@ -275,6 +414,30 @@ Labels (defined in `bootstrap/.github/labels.json`):
 - `good-first-issue`, `help-wanted`
 - `area:cli`, `area:init.bash`, `area:install.sh`, `area:plugins`,
   `area:collections`, `area:ci`
+
+## Sudo policy
+
+shy itself requires sudo for **only two commands**:
+
+- `sudo shy system-install` — writes the `/etc/skel/.shy/` seed for
+  new users.
+- `sudo shy system-uninstall` — removes the seed.
+
+Every other shy command is user-level. The binary actively refuses
+to run as root for commands that would write to user-area paths
+(e.g., `shy init`). Running `sudo shy init` prints an error
+pointing to `shy system-install` instead.
+
+This is enforced at the cobra subcommand level: each subcommand
+declares whether it requires root, refuses root, or is agnostic.
+The default is "refuses root" — explicit opt-in for the few
+commands that need it.
+
+**Sudo for binary installation is separate.** When the operator
+installs the binary via `sudo apt install shy` or
+`sudo curl | bash`, the sudo is required by the package manager
+or the install script, not by shy itself. shy's own sudo
+requirements are limited to system-install/uninstall.
 
 ## Repository hygiene
 

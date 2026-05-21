@@ -204,10 +204,12 @@ is private internal state. When proposing plugin features, default
 to API-based access; only suggest direct filesystem reads if there's
 a strong reason.
 
-**Layer 2 is reserved, not active.** The `[[conformance]]`
-manifest section is recognised but ignored in v1. The shape of
-Layer 2 will be decided when `kebab-it`'s librarian agent matures.
-Until then, v1 keeps the door open without crossing through it.
+**Manifest parser is extensible.** Top-level sections that shy
+does not recognise are tolerated, preserved verbatim, and surfaced
+to plugins via `shy info --json` (under the `unknown` key). Do not
+extend shy-core's schema for plugin-specific metadata; plugins
+declare their own sections (e.g. `[kebab-conformance]`) and read
+them back through the JSON API. The npm/cargo convention.
 
 **`[capabilities]` is reserved, not enforced.** Plugins can
 declare capabilities now. v1 parses and ignores. `shy audit`
@@ -315,6 +317,56 @@ When in doubt, the AI errs on the side of asking. A pause to
 confirm is cheaper than a revert.
 
 ---
+
+## Role 6 — Operating on which branch
+
+shy uses a four-branch strategy (see `05-engineering-handbook.md`).
+The implementer agent is responsible for knowing which branch it
+is currently working on. There is no automatic detection — the
+operator may run multiple parallel implementer sessions, each
+targeting a different branch.
+
+**At the start of every session, run:**
+
+```
+git branch --show-current
+```
+
+The result determines which branch the work targets. Four valid
+results:
+
+- `next` — implementer works on the upcoming v1.0 release. Default
+  for most sessions. Production paths require PR + full CI.
+- `after` — implementer works on v2+ experimental features
+  (workspace, sandboxing, etc.). Relaxed branch protection;
+  acceptance tests are advisory.
+- `before` — implementer works on a backport fix for an older
+  stable release. Strict protection; full CI + acceptance required;
+  PR-only (no direct push even for operator).
+- `main` — **stop**. Direct work on `main` is not permitted
+  (post-v1.0). During v0.x the operator may push docs and
+  scaffolding directly to `main`, but implementer sessions do not
+  target `main` as a default. Ask the operator which branch was
+  intended.
+
+**Preferred operator workflow:** Use git worktrees to isolate
+parallel sessions physically. For example: `~/shy/` for next/
+before work, `~/shy-after/` for after work. The implementer in
+each worktree automatically targets the correct branch since each
+worktree has its own checked-out branch.
+
+**Crossing branch boundaries:** Cherry-picks between branches are
+operator-initiated. The implementer does not move work across
+branches without explicit operator instruction. If the implementer
+believes a change should land on another branch (e.g., a bug fix
+on `next` that should also reach `before`), it raises the
+suggestion to the operator and waits for direction.
+
+**Cross-session file conflicts:** If multiple implementer sessions
+work in parallel, they may target the same file (e.g., README.md).
+The operator coordinates: docs-only changes are typically routed
+through the `next` session. Implementer sessions on `after` avoid
+modifying docs unless the change is `after`-specific.
 
 ## Pointers to other documents
 

@@ -1,0 +1,38 @@
+# Runs benchmarks on PRs; flags regressions against the main baseline.
+name: Benchmarks
+
+on:
+  pull_request:
+    paths:
+      - 'cli/**'
+      - '.github/workflows/bench.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run benchmarks
+        run: |
+          go test -bench=. -benchmem -count=5 -run='^$' \
+            ./cli/internal/... | tee bench-output.txt
+
+      - name: Compare against main baseline
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'go'
+          output-file-path: bench-output.txt
+          alert-threshold: '120%'
+          fail-on-alert: true
+          comment-on-alert: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: false

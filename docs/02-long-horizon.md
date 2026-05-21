@@ -25,7 +25,7 @@ a plugin invoked through the `shy` binary.
 | 3 | Collections | `collection subscribe/update/list/unsubscribe`, manifest discovery, external refs |
 | 4 | Authoring | `create`, `publish`, `$EDITOR` integration, manifest generation |
 | 5 | Plugin architecture | Plugin dispatch, `help` integration, cache rebuild on install |
-| 6 | Override and reset | `override add/remove/list`, `system-reset` |
+| 6 | System install and diagnostics | `system-install/uninstall`, `doctor` |
 | 7 | Distribution polish | GoReleaser pipeline, `.deb`/`.rpm`, man-pages, `install.sh` SHA verify |
 | 8 | Public v0.9 | README polish, first stdlib collection released |
 | 9 | v1.0 | Acceptance test passes end-to-end on a fresh VM; tag v1.0 |
@@ -72,9 +72,10 @@ remove, update, list with type filtering, info rendering.
 
 - `shy init` — creates `$HOME/.shy/{scripts,aliases,completions,
   plugins,overrides.d}/`, writes `init.bash` if missing, adds source
-  line to `~/.bashrc` if not present, copies from `/usr/share/shy/`
-  if it exists (skip-on-conflict), auto-installs `shy`'s own bash-
-  completion via `shy completion bash`, reports summary
+  line to `~/.bashrc` if not present (interactive prompt; skip with
+  `--no-bashrc`), auto-installs `shy`'s own bash-completion via
+  `shy completion bash`, reports summary. Refuses if run as root
+  (points to `shy system-install` for that use case).
 - `shy install <path-or-url>` — installs from a local path,
   `file://` URL, `https://` URL, or git reference (`@user/repo`).
   Validates manifest. Resolves item types. Pins to current HEAD
@@ -213,32 +214,34 @@ just native code.
 distinguishing feature; if dispatch is wrong or discovery is slow,
 the whole "off-ramp for feature creep" promise fails.
 
-## Phase 6 — Override and reset
+## Phase 6 — System install and diagnostics
 
-**Goal:** Administrative-style operations work: place an override,
-remove an override, reset the system to defaults.
+**Goal:** Sysadmin can seed `/etc/skel/` for new users; operator
+has diagnostics to verify their setup.
 
 **Done when:**
 
-- `sudo shy override add <name>` — copies the named item into
-  `/usr/share/shy/overrides.d/<type>/<name>`. On next user
-  `shy init`, the override lands in `$HOME/.shy/overrides.d/`.
-- `sudo shy override remove <name>` — removes the override from
-  the system seed
-- `shy override list` — shows overrides present in both system seed
-  and user directory; no sudo required
-- `sudo shy system-reset` — destructive: wipes `/usr/share/shy/`,
-  `/etc/skel/.shy/` (if exists), and `/home/*/.shy/` for all users
-  on the machine. Requires `--yes-i-know` flag and typed
-  confirmation (`type 'RESET' to confirm`).
-- `sudo shy init` refuses with hint: "To reset shy to default,
-  run `sudo shy system-reset`."
+- `sudo shy system-install` — seeds `/etc/skel/.shy/` with a
+  default init.bash and empty shy.toml; appends the source line to
+  `/etc/skel/.bashrc` (idempotent); writes
+  `.shy/.system-installed` marker for audit and uninstall. Refuses
+  if not run as root.
+- `sudo shy system-uninstall` — reverses system-install. Removes
+  `/etc/skel/.shy/`, strips the source line from
+  `/etc/skel/.bashrc` (leaving the rest intact), removes the
+  marker. Does **not** touch existing users' `$HOME/.shy/`.
+- `shy doctor` — diagnostic command. Reports: binary version,
+  init.bash status, `$HOME/.shy/` structure, installed items
+  (count by type), known issues (broken symlinks, missing source
+  line in `.bashrc`, etc.). No sudo required.
+- `sudo shy init` refuses with hint pointing to `shy system-
+  install` for the `/etc/skel/`-seeding use case.
 
-**Dependencies:** Phase 2 complete (`shy init` exists), Phase 5
-complete (plugins respect override layer).
+**Dependencies:** Phase 2 complete (`shy init` exists).
 
-**Risk profile:** Moderate. `system-reset` is destructive and
-irreversible — needs strict confirmation UX.
+**Risk profile:** Low. `system-install` and `system-uninstall` are
+single-machine, idempotent, and well-bounded by the `/etc/skel/`
+contract. `shy doctor` is read-only.
 
 ## Phase 7 — Distribution polish
 
@@ -251,7 +254,14 @@ man-pages, and the release pipeline is reproducible.
   install, missing `curl`, missing `tar`, unsupported OS/arch
   (actionable message), network failure during download (clean
   rollback)
-- GoReleaser produces `.deb` and `.rpm` packages
+- `install.sh` supports both user-level install (default,
+  `$HOME/.local/bin/shy`, no sudo) and system-wide install
+  (`--system` flag, `/usr/local/bin/shy`, requires sudo)
+- `install.sh` interactively prompts to add the source line to
+  `.bashrc`; supports `--no-bashrc` flag to skip
+- GoReleaser produces `.deb` and `.rpm` packages containing
+  **only** the binary, man-pages, and shy's own bash-completion
+  file. No user content, no seed data.
 - `shy gen-man /tmp/man` produces man-pages for every subcommand
 - Man-pages packaged into `.deb`/`.rpm` via GoReleaser nfpms
   configuration; installed to `/usr/share/man/man1/`
@@ -260,11 +270,14 @@ man-pages, and the release pipeline is reproducible.
   unpacking
 - Lock-file mechanism for `install.sh` to prevent races if invoked
   twice in parallel
+- Homebrew formula in a separate tap (`alfred-intelligence/tap`)
+  installing the same binary; `brew install shy` works on macOS
 
 **Dependencies:** Phase 6 complete.
 
 **Risk profile:** Moderate. Distribution package conventions vary
-subtly between Debian and Red Hat families.
+subtly between Debian and Red Hat families. Homebrew formulas in
+taps have their own conventions to learn.
 
 ## Phase 8 — Public v0.9
 
@@ -330,7 +343,7 @@ end-to-end; v1.0 is a tagging exercise.
 **Goal:** Plugins and stdlib content grow organically. No fixed
 end point.
 
-**Areas:**
+### v1.x — plugins on the v1 base
 
 - **`@alfred-intelligence/shy-audit` is the priority plugin.** Static analysis
   of installed scripts and plugins against suspicious patterns
@@ -340,32 +353,70 @@ end point.
   and flags gaps against actual code. Trigger to build it: when the
   operator starts losing track of subscribed collections and their
   trust state.
-- **`[security]` tag CVE verification (v2 refactor).** Currently
-  v1 trusts upstream `[security]` claims at face value. v2 will
-  require valid CVE references that shy verifies against NVD or
-  GitHub Advisory Database. Severity levels become enforced.
-  Trigger: when abuse patterns are documented (an author tagging
-  non-security updates as security to force notifications).
 - **Plugins shipped early:**
   - `@alfred-intelligence/shy-auto-completions` — weekly scanner that detects
     new tools on `$PATH` and installs their completions
   - `@alfred-intelligence/shy-gh-clone` — clone GitHub repos with default org
   - `@alfred-intelligence/shy-auto-clone` — clone subscribed collections to a
     configurable local directory for editing
-- **Plugin sandboxing via bubblewrap/firejail** (v2). Built when
-  `shy audit` reveals consistent gaps between declared
-  `[capabilities]` and actual plugin behaviour. Enforces sandboxed
-  exec for plugins; sourced scripts remain unsandboxed by
-  architecture.
 - **Stdlib expansion** with broadly useful scripts contributed
   through PRs to `alfred-intelligence/shy-stdlib`
 - **Documentation polish**: hosted docs at `shy.alfred-intelligence.io`
 - **Additional distribution targets** (AUR, Homebrew, NixOS) as
   community contributions
-- **GPG signing for binary releases** when the user base warrants
-  the trust layer
-- **Layer 2 — convention namespace** when `kebab-it`'s librarian
-  agent matures
+
+### v2 — workspace shy
+
+The v2 vision is shy as a terminal workspace, not just a CLI. The
+core shifts from "manage your snippets" to "run your terminal
+session", with snippets remaining the substrate.
+
+- **Plugin sandboxing via bubblewrap/firejail.** Built when
+  `shy audit` reveals consistent gaps between declared
+  `[capabilities]` and actual plugin behaviour. Enforces sandboxed
+  exec for plugins; sourced scripts remain unsandboxed by
+  architecture.
+- **Terminal workspace controller** with tmux backend and named
+  windows: bash, local AI (Ollama), Claude Code, git-repo browser,
+  optionally IDE-style editor pane.
+- **Named persistent sessions** with isolated state per session
+  (AI history, Claude Code ID, bash history, layout).
+- **Workspace-sandbox** as outer defence layer; plugin-sandbox
+  remains inner. Scripts sourced inside the workspace become
+  sandboxed via the outer layer — architectural fix for v1's
+  "scripts cannot be sandboxed" limitation.
+- **Error console window.** Mini-DSL filtering, colour-coded
+  output by level and source, resource watchdog for memory and CPU.
+- **`[security]` tag CVE verification.** Currently v1 trusts
+  upstream `[security]` claims at face value. v2 will require
+  valid CVE references that shy verifies against NVD or
+  GitHub Advisory Database. Severity levels become enforced.
+- **Zsh and fish support.** Runtime sourcing layer gets zsh/fish
+  variants of `init.bash`.
+
+### Out of shy-core, into independent plugin scope
+
+The following items were previously sketched as v2 features of
+shy-core. They have been moved out of shy's roadmap entirely and
+into independent plugin scope. They may be developed under the
+`alfred-intelligence` organisation as standalone projects that
+integrate with shy via the plugin model and extensible manifest
+parser.
+
+- **`@alfred-intelligence/shy-kebab-conformance`** — cross-ecosystem
+  variable-namespace convention enforcement. Reads
+  `[kebab-conformance]` sections from item manifests and verifies
+  semantic compatibility between installed items. Couples with
+  kebab-it's librarian agent. Trigger: when shy's ecosystem grows
+  large enough that variable-name collisions across collections
+  from unknown authors become a real problem.
+- **`@alfred-intelligence/shy-sign`** — GPG signing for plugin and
+  collection releases, modelled on kebab-it-core's signing flow.
+  Trigger: when the user base warrants a trust layer beyond
+  gitops + default-pinning.
+
+These are not on shy's critical path. If neither plugin is ever
+built, shy-core works exactly as designed.
 
 ## Dependencies between phases
 
