@@ -75,7 +75,9 @@ if ! curl -fsSL "$sum_url" -o "$tmp/$asset.sha256"; then
     die "checksum download failed: $sum_url. The release may be incomplete; try a different version with SHY_VERSION=vX.Y.Z."
 fi
 
-if ! ( cd "$tmp" && sha256sum -c "$asset.sha256" >/dev/null 2>&1 ); then
+expected=$(tr -d '[:space:]' < "$tmp/$asset.sha256")
+actual=$(sha256sum "$tmp/$asset" | cut -d' ' -f1)
+if [[ "$expected" != "$actual" ]]; then
     die "SHA256 mismatch for $asset. The download is corrupted or has been tampered with — refusing to install."
 fi
 
