@@ -5,6 +5,13 @@ All notable changes to shy are documented here. Entries follow
 file is maintained by [release-please](https://github.com/googleapis/release-please)
 from `next`.
 
+## [0.2.1](https://github.com/alfred-intelligence/shy/compare/v0.2.0...v0.2.1) (2026-05-21)
+
+
+### Bug Fixes
+
+* **release:** Trigger GoReleaser on release:created not push:tags ([44e3789](https://github.com/alfred-intelligence/shy/commit/44e37897230cff59e94daf9dc003b1f4884a0d6e))
+
 ## [0.2.0](https://github.com/alfred-intelligence/shy/compare/v0.1.0...v0.2.0) (2026-05-21)
 
 
