@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/alfred-intelligence/shy/internal/cache"
 	"github.com/alfred-intelligence/shy/internal/paths"
 )
 
@@ -200,5 +201,13 @@ func bootstrapShyCompletion(home string) error {
 	// Strip the cobra `complete -o` lines that source-time-bind to
 	// `shy`; the file is read every shell start, so they're correct.
 	out := strings.TrimRight(buf.String(), "\n") + "\n"
-	return os.WriteFile(dst, []byte(out), 0o644)
+	if err := os.WriteFile(dst, []byte(out), 0o644); err != nil {
+		return err
+	}
+	c, err := cache.Load(paths.CacheFile(home))
+	if err != nil {
+		return err
+	}
+	c.Add(cache.Installed{Type: "completion", Name: "shy", Source: "builtin"})
+	return c.Save()
 }

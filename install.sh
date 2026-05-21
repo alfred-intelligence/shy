@@ -108,5 +108,41 @@ unset -f _shy_link_to_path
 
 "$PREFIX/bin/shy" init
 
+# Offer to set $EDITOR if the user doesn't already have one configured.
+_shy_detect_editor() {
+    [[ -n "${EDITOR:-}" ]] && return 0
+    local profile="$HOME/.profile"
+    local candidates=(nvim vim nano pico vi)
+    local found=()
+    local path
+    for ed in "${candidates[@]}"; do
+        path=$(command -v "$ed" 2>/dev/null) && found+=("$path")
+    done
+    [[ ${#found[@]} -eq 0 ]] && return 0
+    echo ""
+    echo "shy: \$EDITOR is not set. Which editor would you like to use?"
+    local i
+    for i in "${!found[@]}"; do
+        printf "  %d) %s\n" "$((i+1))" "${found[$i]}"
+    done
+    printf "  s) skip\n"
+    local choice
+    read -r -p "Choice [1-${#found[@]}/s]: " choice
+    case "$choice" in
+        s|S|"") return 0 ;;
+        *)
+            local idx
+            idx=$(( choice - 1 ))
+            if [[ $idx -ge 0 && $idx -lt ${#found[@]} ]]; then
+                local chosen="${found[$idx]}"
+                printf '\nexport EDITOR="%s"\n' "$chosen" >> "$profile"
+                echo "shy: wrote export EDITOR=\"$chosen\" to $profile"
+            fi
+            ;;
+    esac
+}
+_shy_detect_editor
+unset -f _shy_detect_editor
+
 echo "shy: $VERSION installed at $PREFIX/bin/shy"
 echo "shy: open a new shell or run \`source $PREFIX/init.bash\` to activate."
