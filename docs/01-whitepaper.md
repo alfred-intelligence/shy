@@ -65,32 +65,120 @@ It is **not** for:
 - People migrating their entire dotfile setup — `chezmoi` is the
   right tool for that.
 
+## Prior art
+
+shy stands on a decade of work by others who have explored adjacent
+parts of this problem space. Several deserve explicit recognition,
+both because they got the foundational ideas right and because
+understanding their choices clarifies what shy adds.
+
+**`basher` (Carlos Becker et al., basherpm/basher, since the early
+2010s).** The closest neighbour. basher established the model that
+shy inherits: install shell packages from git, store them in a
+central per-user location, register their binaries on `PATH`, and
+let an init hook activate the lot from `.bashrc`. It supports bash,
+zsh, and fish; handles dependencies through `package.sh` metadata;
+manages completions and man-pages; and has been quietly reliable
+since long before this whitepaper was written. The fact that a
+project this small has survived a decade of churn in the bash
+ecosystem is not an accident — it is evidence that the core idea is
+sound. basher's deliberate scope (a bash implementation that does
+one thing well: installing scripts from git) is a feature, not a
+limitation. Anyone who has used basher and found it sufficient is
+not in shy's target audience, and that is fine.
+
+**`bpkg` (`bpkg/bpkg`).** A second well-loved bash package manager
+in the same lineage. bpkg uses `bpkg.json` for metadata, supports
+both global and per-project installation modes, and emphasises
+lightweight integration. The dual-mode (global vs per-project) is
+an idea shy does not adopt — shy is per-user only — but the
+philosophy of "lightweight, install from git, don't get in the way"
+is shared.
+
+**Adjacent tools, different problems.** `oh-my-bash` and `bash-it`
+are frameworks: they bundle themes, prompts, and curated alias sets
+behind a single install. They optimise for "decorate my shell";
+shy optimises for "let me curate my own snippets and share them".
+`chezmoi` and `yadm` manage entire dotfile repositories with
+templating and per-host conditionals; they own the whole user
+environment. shy intentionally owns only the small, sourceable
+pieces.
+
+**What shy adds.** The grounding idea — install shell things from
+git via a per-user package manager — is not new, and shy does not
+pretend otherwise. What is new is taking that idea further on
+several axes simultaneously:
+
+- A Go binary as dispatcher, allowing fast subcommand routing and
+  enabling plugins to register as first-class commands (`shy
+  gh-clone <repo>`) rather than just additions to `PATH`.
+- Aliases and completions treated as first-class item types with
+  their own lifecycle, not as side-effects of installing a binary.
+- Collections as a meta-package primitive: one git repository can
+  declare a curated set of plugins, scripts, and aliases that
+  install together, with reference resolution and conflict
+  handling.
+- A `manifest.toml` deliberately scoped to metadata only, with the
+  filesystem as runtime source of truth — making the system
+  legible by direct inspection rather than configuration parsing.
+- A per-user install model that owns nothing outside `$HOME/.shy/`,
+  with an optional `/etc/skel/`-based seed mechanism that lets
+  sysadmins activate shy for new users without taking control away
+  from anyone.
+- A `shy publish` flow that uses Conventional Commits to infer
+  versioning and treats publication as the establishment of a
+  distributable git repository, not just a copy operation.
+
+None of these is a criticism of basher or bpkg. They are choices
+that follow naturally once one decides to take the foundational
+idea — install shell things from git — and run with it further than
+its originators chose to. shy is not better than basher; shy is
+broader, with the costs and complexity that breadth entails. Anyone
+whose needs are met by basher should keep using basher. Anyone
+whose needs have outgrown basher's scope, and who has been
+assembling that scope themselves from tmux configurations, ad hoc
+plugins, and dotfile sprawl, is the audience shy is built for.
+
 ## Solution
 
 `shy` is one CLI binary plus a thin shell layer.
 
 **1. The binary `shy`.** Written in Go, distributed as a static
 single-file release. Handles all operations: install, remove,
-update, list, create, publish, init, override, system-reset, info,
-outdated, snooze, upgrade, and plugin dispatch. The binary embeds
-`glamour` for rendering README files inline and `cobra` for
-subcommand structure, help text, man-page generation, and shell-
-completion generation. It exposes a structured API to plugins via
+update, list, create, publish, init, info, outdated, snooze,
+system-install, system-uninstall, doctor, and plugin dispatch.
+The binary embeds `glamour` for rendering README files inline and
+`cobra` for subcommand structure, help text, man-page generation,
+and shell-completion generation. It exposes a structured API to
+plugins via
 `--json` on read commands and `--silent` on write commands.
 
 Two complementary installation channels:
 
 - **User-level install** via `curl | bash`. Lands in
-  `$HOME/.shy/bin/`. Targets the user who ran the command. No root
-  required. The installer script lives at a stable URL and remains
-  backward compatible forever.
-- **System-level install** via distribution packages (`.deb`,
-  `.rpm`). Lands in `/usr/share/shy/` and `/usr/bin/shy`. Targets
-  all users on the machine via standard FHS paths. Man-pages
-  installed to `/usr/share/man/man1/`.
+  `$HOME/.local/bin/shy` by default, or `/usr/local/bin/shy` if
+  the operator opts for system-wide placement (requires sudo).
+  Targets the user who ran the command. The installer script
+  lives at a stable URL and remains backward compatible forever.
+- **System package install** via distribution packages (`.deb`,
+  `.rpm`) or Homebrew. Lands the binary in `/usr/bin/shy` (Linux
+  packages) or `$(brew --prefix)/bin/shy` (Homebrew). Man-pages
+  installed to `/usr/share/man/man1/`. Bash-completion installed
+  to `/usr/share/bash-completion/completions/shy`.
 
-Both can be installed simultaneously; the user binary wins via
-`$PATH` ordering.
+System packages contain **only the binary plus man-pages and shy's
+own bash-completion file** — no content, no seed data, no
+user-area modification. Installing the package does not alter any
+user's environment until they explicitly run `shy init`.
+
+Both install methods can coexist; user-level installs take
+precedence via `$PATH` ordering when both are present.
+
+**Optional seed for new users (sysadmin opt-in).** A separate
+command `sudo shy system-install` seeds `/etc/skel/.shy/` so that
+users created afterward (via `useradd -m`) get a working shy
+setup automatically. This is opt-in and never altered by package
+installation. See § Seed model for new users below.
 
 **2. The shell layer.** A small `init.bash` file sourced from
 `~/.bashrc`. It walks `$HOME/.shy/scripts/`, `aliases/`,
@@ -130,19 +218,10 @@ adding a single source line. No other state lives outside of
 
 ## Architecture
 
-### Three locations, two runtime layers
+### File system layout
 
 ```
-/usr/share/shy/                  ← System seed (root-installed via apt/dnf)
-├── scripts/                     ← Never sourced directly at runtime
-│   └── <namespace>/<name>/      ← Copied to user via `shy init`
-├── plugins/                     ← Same namespacing
-├── aliases/                     ← Flat files (no namespacing)
-├── completions/                 ← Flat files (no namespacing)
-└── overrides.d/
-
-$HOME/.shy/                      ← User canonical, chmod 700 by default
-├── bin/shy                      ← Binary (if installed user-level)
+$HOME/.shy/                      ← Per-user, owned by user, chmod 700
 ├── init.bash                    ← Sourced from ~/.bashrc
 ├── scripts/                     ← Sourced at runtime, first
 │   └── <namespace>/<name>/      ← *.sh files sourced; _*.sh skipped
@@ -156,7 +235,29 @@ $HOME/.shy/                      ← User canonical, chmod 700 by default
 │   └── completions/
 ├── collections/                 ← Cloned subscribed collections
 └── cache.json                   ← Internal runtime cache; not a plugin API
+
+/etc/skel/.shy/                  ← Seed for *new* users (optional)
+├── init.bash                    ← Default init script template
+└── shy.toml                     ← Default config (empty)
 ```
+
+Two locations, both per-user-scoped at runtime:
+
+- **`$HOME/.shy/`** is the operator's canonical area. Everything
+  shy reads or writes during runtime lives here. The operator
+  owns it; shy never modifies it outside of explicit operator
+  commands (`shy init`, `shy install`, etc.).
+- **`/etc/skel/.shy/`** is a *template*, not a runtime location.
+  Linux's `useradd -m` mechanism copies its contents to new users'
+  home directories at account creation time. shy itself never
+  reads from `/etc/skel/` at runtime. The seed exists only so
+  newly created users get a working shy environment without
+  having to run `shy init` manually.
+
+There is no `/usr/share/shy/` or similar system-content area. Shy
+binaries from `.deb`/`.rpm`/Homebrew install only the executable,
+man-pages, and shy's own bash-completion file — never any user
+content.
 
 ### Namespacing strategy
 
@@ -189,26 +290,66 @@ install/subscribe time with the diff-prompt flow (1–2 conflicts get
 one-by-one prompts; 3+ get a bulk-summary prompt with `accept all
 from new` / `keep all current` / `prompt one-by-one`).
 
-### How `shy init` interacts with the layers
+### How `shy init` works
 
-`shy init` is the seed-mirror command. It:
+`shy init` initialises a user's shy area. It:
 
 1. Creates `$HOME/.shy/` with `chmod 700` (protects against other
    users on shared hosts).
-2. Creates subdirectories under `$HOME/.shy/` with standard
-   permissions inherited from the umask.
-3. Copies all files from `/usr/share/shy/` into `$HOME/.shy/`,
-   skipping any file that already exists in the user location.
-   Re-running is idempotent: new files from a system upgrade land
-   in the user location, existing user files remain untouched.
+2. Creates the standard subdirectory structure under `$HOME/.shy/`
+   with permissions inherited from the umask.
+3. Writes a default `init.bash` to `$HOME/.shy/init.bash` that
+   walks the subdirectories and sources files in the right order.
 4. Auto-installs shy's own bash-completion to
-   `$HOME/.shy/completions/shy` via its own completion mechanism
-   (`shy completion bash > $HOME/.shy/completions/shy`).
-5. Writes the source line to `~/.bashrc` if not already present.
+   `$HOME/.shy/completions/shy` via `shy completion bash >
+   $HOME/.shy/completions/shy`.
+5. Writes the source line to `~/.bashrc` if not already present
+   (with an interactive prompt if `--no-bashrc` is not specified).
 
-`sudo shy init` is deliberately disabled and prints a hint pointing
-to `shy system-reset` (the explicit destructive command for
-restoring a clean state across all users on the machine).
+Re-running `shy init` is idempotent: existing files are not
+overwritten unless `--force` is passed.
+
+`sudo shy init` refuses with a clear error pointing to
+`shy system-install`:
+
+```
+shy init creates per-user state. Don't run as root.
+
+To seed /etc/skel/ for new users on this machine, use:
+  sudo shy system-install
+```
+
+### Seed model for new users
+
+`sudo shy system-install` (sysadmin opt-in) seeds `/etc/skel/` so
+new users get shy active by default. The command:
+
+1. Creates `/etc/skel/.shy/` with a minimal init.bash and empty
+   shy.toml.
+2. Appends `source $HOME/.shy/init.bash` to `/etc/skel/.bashrc`
+   (or creates `.bashrc` if absent), idempotent — won't duplicate
+   on re-run.
+3. Writes a marker file (`.shy/.system-installed`) for audit and
+   later uninstall.
+
+After `system-install`, every new user created via `useradd -m`
+gets `/etc/skel/`'s contents copied to their home, including the
+`.shy/` seed and modified `.bashrc`. Their first shell start
+activates shy.
+
+**This does not affect existing users.** Their `$HOME/` is
+unchanged. They install shy for themselves via `shy init` if they
+want it.
+
+`sudo shy system-uninstall` reverses the seed:
+
+1. Removes `/etc/skel/.shy/`.
+2. Removes the `source $HOME/.shy/init.bash` line from
+   `/etc/skel/.bashrc` (leaves the rest of the file intact).
+3. Removes the marker file.
+
+It does **not** touch existing users' `$HOME/.shy/`. Those are
+their property to manage.
 
 ### Runtime layer order
 
@@ -220,8 +361,12 @@ At every shell start, `init.bash` sources files in two layers:
    Sourced after the user layer; later wins by standard bash
    semantics.
 
-System install never sources directly; it is purely a seed source
-for `shy init`. The user is always above the system at runtime.
+The override layer exists for user-level customisation of
+installed content. If the operator installs a collection but wants
+to modify one of its scripts, the modification goes in
+`overrides.d/` rather than directly editing the installed file —
+otherwise `shy update` of the collection would overwrite the
+local change.
 
 ### Helpers convention
 
@@ -242,6 +387,50 @@ opt-in and entirely independent of the manifest. "Private" here is
 a programming-encapsulation convention, not a security mechanism —
 `_`-prefixed files are still readable and inspectable.
 
+### Item types — sourced vs dispatched
+
+shy distinguishes four item types in the manifest: `script`,
+`alias`, `completion`, and `plugin`. At the manifest and CLI level
+these are separate categories with their own ergonomics and
+conflict-resolution rules. **At runtime there are only two
+categories: sourced and dispatched.**
+
+| Item type | Runtime category | Mechanism |
+|---|---|---|
+| `script` | Sourced | Loaded into the user's shell at startup; persists state (functions, env, CWD) |
+| `alias` | Sourced | Single-line `alias x='y'` file loaded at startup; degenerate case of script |
+| `completion` | Sourced | Completion-spec file loaded at startup; defines tab-completion behaviour for an external tool |
+| `plugin` | Dispatched | Executed as subprocess when `shy <command>` is invoked; no shell-state side effects |
+
+**The mental model:** *does this code need to run in your shell, or
+does it just need to run?* If it modifies shell state (defines a
+function, sets an environment variable, changes directory, adjusts
+`PROMPT_COMMAND`), it must be sourced — that is what `script`,
+`alias`, and `completion` are for. If it performs a discrete action
+that begins and ends as a subprocess, it is a plugin.
+
+Aliases and completions exist as separate item types from scripts
+purely for UX and distribution reasons:
+
+- `[aliases] gst = "git status -sb"` is more ergonomic than a full
+  `[[items]]` block with `type = "alias"` and `value`.
+- shy can auto-generate completions via `<tool> completion bash`
+  without the operator authoring them by hand.
+- Conflict resolution targets aliases by name (one `ll` wins) and
+  completions by tool name; the targeting differs from script
+  conflicts, which collide on shell-function names.
+
+Operationally — disk layout (`scripts/`, `aliases/`,
+`completions/`), CLI filters (`shy list --type=alias`), and
+init.bash's sourcing loop — they are kept apart. Conceptually they
+are all the same thing: code that runs in your shell.
+
+The architectural consequence is that **only plugins can be
+sandboxed** (planned for v2 via bubblewrap/firejail). Sourced items
+must execute in the operator's interactive shell to do their job;
+sandboxing would break the sourcing semantics they rely on. This is
+permanent across all versions of shy, not a v1 limitation.
+
 ### Manifest format
 
 A single TOML schema covers single-script repos, multi-item
@@ -254,6 +443,19 @@ for `list`, `info`, `update`, and `publish`. It is not read by
 `init.bash` at runtime. Files on disk are the source of truth for
 what gets sourced; the manifest describes those files for sharing
 purposes only.
+
+**The parser is extensible.** shy's TOML parser tolerates top-level
+sections it does not recognise rather than rejecting them. Unknown
+sections are preserved verbatim and returned to plugins via
+`shy info <name> --json`, which exposes the full parsed manifest.
+This lets plugins evolve their own metadata schemas without
+shy-core coordinating every release — the same convention `npm`
+uses for `package.json` (`"eslint"`, `"babel"`, and similar
+plugin-specific keys are tolerated).
+
+Plugin authors who need durable metadata place it under a section
+named after their plugin (e.g. `[kebab-conformance]`) and read it
+back via the JSON API. shy itself never interprets these sections.
 
 Minimal single-script form:
 
@@ -357,7 +559,6 @@ Manifest fields:
 | `[requires]` | Any | Runtime checks (bash version, binaries on PATH) |
 | `[capabilities]` | Reserved | Declared capabilities for v2 sandboxing; parsed and ignored in v1; read by `shy audit` plugin |
 | `[security]` | Updates | Marks an update as a security fix; bypasses update-check throttle and snooze |
-| `[[conformance]]` | Reserved | Future Layer 2; ignored in v1 |
 
 Item-type validation is performed by the binary at install time.
 `type = "plugin"` requires `command`; `type = "alias"` requires
@@ -744,11 +945,12 @@ This is the same algorithm shy applies to user-authored scripts at
 |---|---|---|
 | Go binary for CLI | Pure bash, Rust, Python | Subcommands, JSON/TOML handling, error types; Go is the author's primary language; static binaries with no runtime dependencies |
 | Bash for `init.bash` and `install.sh` | Pure Go | `init.bash` must be sourced into the user's shell; `install.sh` runs before any binary exists |
-| `curl \| bash` is user-only | Auto-detect via root | Predictability beats cleverness |
-| System install via distro packages | One channel, multiple use | apt/dnf handle permissions, dependencies, upgrades |
-| User always above system at runtime | Mixed precedence | Consistent with XDG and pip conventions |
-| Overrides as user-owned | System-owned at `/etc/shy/overrides.d/` | Symmetry with the rest of `$HOME/.shy/` |
-| `shy init` copies seed, skip-on-conflict | Replace user files | Protects user customisation |
+| `curl \| bash` is user-only by default | Auto-detect via root | Predictability beats cleverness |
+| Distro packages contain binary only | Pre-seed content in packages | Decouples binary distribution from content seeding; sysadmin opts into seeding explicitly |
+| `/etc/skel/.shy/` for new user seed | Custom `/usr/share/shy/` content area | Reuses OS-native mechanism for new-user initialisation instead of duplicating it |
+| Sudo required only for `system-install`/`system-uninstall` | Sudo for any system-affecting command | shy is per-user; only the `/etc/skel/` seed needs root |
+| Overrides as user-owned | System-owned alternative | Single-layer model — overrides live alongside user content |
+| `shy init` creates empty area | Copy seed from system location | No system content to seed from; user-area is self-contained |
 | TOML manifest | JSON, YAML | Hand-editable, less syntactic noise |
 | Manifest is metadata, not configuration | Manifest authoritative for runtime | Runtime depends on filesystem structure |
 | Unified manifest schema (single + multi) | Two schemas | One mental model; binary infers form from content |
@@ -766,7 +968,7 @@ This is the same algorithm shy applies to user-authored scripts at
 | GitHub primary distribution | Multi-host neutral | Optimised UX (`@user/repo` syntax, GoReleaser integration) |
 | `install.sh` permanent contract | Reversioned installers | One URL anyone can curl forever |
 | Plugin architecture in v1.0 | Plugin support in v1.x | Plugins are the off-ramp for feature creep |
-| Layer 2 reserved in manifest, deferred to v2 | Build now, build never | `[[conformance]]` accepted but ignored in v1 |
+| Extensible manifest parser | Strict schema rejecting unknown sections | Plugins evolve their own metadata schemas without shy-core releases; npm/cargo precedent |
 | `[capabilities]` reserved in manifest, deferred to v2 | Enforce from v1, omit entirely | Audit plugin reads it for static-vs-declared analysis |
 | Default-pinning at `shy install @user/repo` | Follow main branch | Security and reproducibility |
 | `shy collection update --dry-run` default | Apply directly | Operators see diffs before they hit shell |
@@ -782,6 +984,7 @@ This is the same algorithm shy applies to user-authored scripts at
 | 7-day update check cache | 24-hour (gh default) | Less invasive for personal-use cadence |
 | Footer-line update notification | Box, banner, or explicit-only | Informative without visual noise |
 | No GPG signing in v1 | Sign from start | User is trust root for own collections |
+| MPL-2.0 for code, CC-BY-SA 4.0 for docs | Single licence for both | File-level copyleft for code, share-alike for documentation symmetry |
 
 ## Security model
 
@@ -927,40 +1130,102 @@ out of scope.
 v1.0 covers the design above: solid mechanics for managing bash
 snippets within a single user's ecosystem.
 
-Reserved future directions, in rough priority order:
+Reserved future directions, grouped by scope:
 
-- **`shy audit` plugin** (v1.x). Static analysis of installed
-  scripts and plugins; flags gaps between declared
-  `[capabilities]` and actual code.
-- **Plugin sandboxing via bubblewrap/firejail** (v2). Enforces
-  declared `[capabilities]` at plugin runtime.
-- **`[security]` tag CVE verification** (v2). Deterministic
-  verification against NVD or GitHub Advisory Database; severity
-  levels become enforced.
-- **GPG signing for binary releases** (v2).
-- **Layer 2 — Convention namespace** (v2). `[[conformance]]`
-  sub-schema for cross-ecosystem snippet portability.
-- **Auto-completions plugin** (v1.x). `@alfred-intelligence/auto-completions`.
-- **Zsh and fish support** (v2+).
+### v1.x — plugins shipped on the v1 base
 
-Daemon mode is a hypothetical v3, gated on the specific triggers in
-the security section.
+- **`shy audit` plugin.** Static analysis of installed scripts and
+  plugins; flags gaps between declared `[capabilities]` and actual
+  code (eval of untrusted input, network calls to undeclared hosts,
+  reads of sensitive paths, subprocess spawns to undeclared
+  binaries). Reports; does not enforce.
+- **Auto-completions plugin** (`@alfred-intelligence/auto-completions`).
+  Weekly scanner that maps installed binaries on `$PATH` against
+  an index of known completion-generation patterns.
+
+### v2 — workspace shy
+
+The v2 vision is shy as a terminal workspace, not just a CLI tool.
+Concretely: a multiplexed terminal environment with shy as the
+controller layer, tmux as the backend, and named windows for shell
+interaction, AI assistant (local Ollama and/or Claude Code), git
+repository browser, and an error console.
+
+- **Plugin sandboxing via bubblewrap/firejail.** Enforces declared
+  `[capabilities]` at plugin runtime. Scripts remain unsandboxed by
+  architecture.
+- **Workspace-sandbox** (outer) and plugin-sandbox (inner) as a
+  two-layer defence model. Scripts sourced inside the workspace
+  become sandboxed via the outer layer — the architectural fix
+  to v1's "scripts can never be sandboxed" limitation.
+- **Named persistent sessions** (`shy workspace --new dev`,
+  `--attach`, `--list`, `--kill`). Each session has isolated state:
+  separate AI history, separate Claude Code session ID, separate
+  bash history, separate layout.
+- **Error console window.** Observability surface showing runtime
+  events (info/warn/error/fatal) from workspace, plugins, and
+  resource monitors. Mini-DSL for filtering
+  (`level>=warn source=plugin/* since=5m`), colour-coded by level
+  and source, with a resource watchdog that flags memory balloons
+  and sustained CPU.
+- **`[security]` tag CVE verification.** Deterministic verification
+  against NVD or GitHub Advisory Database; severity levels become
+  enforced rather than trust-based.
+- **Zsh and fish support.** Cobra's completion generation already
+  covers both; runtime sourcing layer needs a zsh/fish variant of
+  `init.bash`.
+
+### Out of shy-core, into plugin scope
+
+Two items previously sketched as v2-core have been moved to
+independent plugin scope. They are not part of shy's roadmap; they
+are separate projects that may exist in the `alfred-intelligence`
+ecosystem and integrate via shy's plugin model and extensible
+manifest parser.
+
+- **`@alfred-intelligence/shy-kebab-conformance`.** Cross-ecosystem
+  variable-namespace convention enforcement. Plugins read a
+  `[kebab-conformance]` section from item manifests declaring which
+  named convention the item follows; the plugin verifies semantic
+  compatibility between installed items. Couples with kebab-it's
+  librarian agent, which extracts convention candidates from
+  real-world infrastructure tasks. Speculative: solves a problem
+  that exists at substantial ecosystem scale, not at v1 scale.
+- **`@alfred-intelligence/shy-sign`.** GPG signing for plugin and
+  collection releases, modelled on kebab-it-core's signing flow.
+  Operates as a verification plugin invoked at install or update
+  time.
+
+### Hypothetical v3
+
+Daemon mode (similar to dockerd: socket, privilege boundary,
+mediated access) is theoretically possible but gated on specific
+triggers documented in the security section. Not planned.
 
 ## Assumptions for Phase B
 
 These were assessed silently during Phase A and have been confirmed
 at the start of Phase B operationalisation.
 
-- **Licence: MPL-2.0.** File-level copyleft; preserves shy as open
-  source while allowing plugin/integration code to use any licence.
+- **Licence for code: MPL-2.0.** File-level copyleft; preserves shy
+  as open source while allowing plugin/integration code to use any
+  licence.
+- **Licence for documentation: CC-BY-SA 4.0.** Share-alike for the
+  whitepaper, design documents, and other documentation in the
+  repository. Symmetric with MPL-2.0's copyleft principle — work
+  derived from shy's documentation must remain under the same
+  licence.
 - **Strictness level: `solo+contrib`.** Operator-primary; external
   PRs welcome but not the default audience.
-- **Branch strategy:** stable/next pattern. `main` is stable and
-  reflects the latest tagged release; `next` is active development
-  and the default branch for PRs. Release-please runs on `next`;
-  post-release workflow merges `next` → `main` automatically.
-  Hotfixes cherry-pick to `next` and follow the standard release
-  flow.
+- **Branch strategy:** four-branch time-sequenced model. `main` is
+  stable and reflects the latest tagged release; `next` is active
+  development for the upcoming release; `after` is experimental
+  post-v1 work (workspace, sandboxing); `before` is backport-only
+  for fixes to older stable releases. See `05-engineering-
+  handbook.md` for full lifecycle. During v0.x (pre-1.0) the
+  operator may push directly to `main` for documentation and
+  scaffolding; strict automation-only enforcement applies from
+  v1.0 onward.
 - **Release cadence:** tagged releases via GoReleaser, automated
   versioning via release-please. No fixed schedule.
 - **Conventional Commits** for changelog generation.

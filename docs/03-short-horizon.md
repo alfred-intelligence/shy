@@ -18,6 +18,46 @@ their dependencies are met.
 
 ---
 
+## Pre-flight checks (run before Step 1)
+
+The operator indicated that a pre-release may already exist on the
+`next` branch — mentioned as `v0.2-pre` or `v0.9-pre` in different
+statements with some uncertainty. Verify the actual repository
+state before proceeding.
+
+**Checks:**
+
+1. Clone the repository locally if not already:
+   `git clone https://github.com/alfred-intelligence/shy.git`
+2. Fetch tags: `git fetch --tags`
+3. List existing tags: `git tag -l 'v*'`
+4. Check the `next` branch exists and has commits:
+   `git log next --oneline | head -5`
+5. Check GitHub Releases page for any release marked as
+   pre-release.
+
+**Decision tree:**
+
+- **If a pre-release tag (`v0.2*` or `v0.9*`) exists** on `next`:
+  proceed to Step 1 noting the pre-existing release as the starting
+  point. release-please will produce the next version from that
+  baseline.
+- **If no pre-release tag exists despite the operator's claim:**
+  do not proceed with Step 1. Report this finding to the operator:
+  "No pre-release `v0.2*` or `v0.9*` was found on `next`. Please
+  verify the intended release state before implementation begins."
+  The operator handles any follow-up from there; the implementer's
+  responsibility ends with the report.
+- **If `next` branch does not exist yet:** the repository was
+  initialised but no branching has been done. Proceed to Step 1,
+  which will create `next`.
+
+This pre-flight check exists because the operator's recollection
+of the release state was uncertain. Verifying first prevents
+implementer rework if the assumed baseline is wrong.
+
+---
+
 ## Step 1 — Create repository
 
 **Task:** Create `github.com/alfred-intelligence/shy` as a public repository
@@ -283,8 +323,6 @@ nfpms:
     formats: [deb, rpm]
     bindir: /usr/bin
     contents:
-      - src: init/init.bash
-        dst: /usr/share/shy/init.bash
       - src: /tmp/shy-man/
         dst: /usr/share/man/man1/
         type: tree
@@ -474,7 +512,10 @@ grep 'shy/init.bash' ~/.bashrc && echo "bashrc integration in place"
 ## Step 10 — Manifest parser
 
 **Task:** Implement the TOML manifest parser. Validate single-item,
-multi-item, source, dependency, and conformance forms.
+multi-item, source, and dependency forms. Parser tolerates unknown
+top-level sections (extensible by design — plugins can add their
+own metadata sections that shy preserves and surfaces via the
+JSON API).
 
 **Commands:**
 
@@ -503,7 +544,9 @@ type Manifest struct {
     Completions  []CompletionItem    `toml:"completions,omitempty"`
     Dependencies []Dependency        `toml:"dependencies,omitempty"`
     Requires     *Requires           `toml:"requires,omitempty"`
-    Conformance  []map[string]string `toml:"conformance,omitempty"`
+    Capabilities *Capabilities       `toml:"capabilities,omitempty"`
+    Security     *Security           `toml:"security,omitempty"`
+    Unknown      map[string]any      `toml:"-"`
 }
 
 type Source struct {
@@ -538,10 +581,43 @@ type Requires struct {
     Binaries []string `toml:"binaries,omitempty"`
 }
 
+// Capabilities — declared, parsed, surfaced; not enforced in v1.
+type Capabilities struct {
+    Network    []string `toml:"network,omitempty"`
+    Binaries   []string `toml:"binaries,omitempty"`
+    Filesystem []string `toml:"filesystem,omitempty"`
+}
+
+// Security — marks an update as a security fix; bypasses throttle.
+type Security struct {
+    Fixes       string `toml:"fixes,omitempty"`
+    Severity    string `toml:"severity,omitempty"`
+    Description string `toml:"description,omitempty"`
+}
+
+// Parse extracts known fields into the typed struct and preserves
+// the full raw document for plugin-defined sections.
 func Parse(data []byte) (*Manifest, error) {
     var m Manifest
     if err := toml.Unmarshal(data, &m); err != nil {
         return nil, err
+    }
+    // Re-parse into a generic map and store unknown top-level keys.
+    var raw map[string]any
+    if err := toml.Unmarshal(data, &raw); err != nil {
+        return nil, err
+    }
+    known := map[string]struct{}{
+        "name": {}, "version": {}, "description": {}, "license": {},
+        "type": {}, "entry": {}, "source": {}, "items": {},
+        "aliases": {}, "completions": {}, "dependencies": {},
+        "requires": {}, "capabilities": {}, "security": {},
+    }
+    m.Unknown = make(map[string]any)
+    for k, v := range raw {
+        if _, ok := known[k]; !ok {
+            m.Unknown[k] = v
+        }
     }
     return &m, nil
 }
@@ -610,34 +686,32 @@ git commit -m "Add TOML manifest parser with basic tests"
 
 **Task:** Wire up `init` as a real subcommand. Creates directory
 structure with namespacing, writes `init.bash`, modifies `.bashrc`
-once, copies seed from `/usr/share/shy/` if present, auto-installs
-shy's own completion via its own mechanism.
+once, auto-installs shy's own completion via its own mechanism.
 
 **Behavioural specification:**
 
-- If running as root: print hint about `shy system-reset` and exit
+- If running as root: print hint about `shy system-install` and exit
 - Create `$HOME/.shy/` with `chmod 700` (protects against other
   users on shared hosts)
 - Create subdirectories
   (`scripts/`, `aliases/`, `completions/`, `plugins/`,
   `overrides.d/{scripts,aliases,completions}/`) — subdirectories
   inherit standard permissions from umask
-- Copy from `/usr/share/shy/` recursively, skipping any file that
-  already exists in the destination
 - Write `init.bash` if missing
 - Add `[ -f "$HOME/.shy/init.bash" ] && source "$HOME/.shy/init.bash"`
-  to `~/.bashrc` if not already present (idempotent)
+  to `~/.bashrc` if not already present (interactive prompt unless
+  `--no-bashrc` is passed; idempotent)
 - Generate `shy completion bash` output and write it to
   `$HOME/.shy/completions/shy` (shy bootstrapping its own
   completion via its own mechanism — a sanity check that the
   mechanism works end-to-end)
-- Print summary: directories created, files copied, bashrc modified
+- Print summary: directories created, files written, bashrc modified
   yes/no
 
 **Implementation:** Use `cobra` for command structure; implement
 the steps in `cli/internal/cmd/init.go`. Helper functions in
-`cli/internal/cmd/init_helpers.go` handle copy-tree-skip-conflict,
-bashrc-line-detection, and completion-bootstrap.
+`cli/internal/cmd/init_helpers.go` handle bashrc-line-detection
+and completion-bootstrap.
 
 **Done when:**
 
@@ -647,7 +721,8 @@ bashrc-line-detection, and completion-bootstrap.
 - `.bashrc` gets one source line; running `shy init` again does not
   duplicate it
 - `~/.shy/completions/shy` contains shy's own bash-completion
-- `sudo shy init` refuses with the hint message
+- `sudo shy init` refuses with the hint message pointing to
+  `shy system-install`
 - Integration test: source the new init.bash in a fresh bash; no
   errors, even with empty directories; verify `shy <tab>` produces
   completions

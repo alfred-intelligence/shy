@@ -13,12 +13,14 @@ each workflow does and why*. The YAML is the source of truth for
 
 | Workflow | File | Trigger | Purpose |
 |---|---|---|---|
-| CI | `ci.yml` | push to `next`, pull_request | Validates code quality, tests, and plugin-dispatch performance |
-| Acceptance | `acceptance.yml` | push to `next`, pull_request, weekly schedule | End-to-end installation and behavior tests across OS matrix |
-| Release | `release.yml` | push of `v*` tag | Builds and publishes release artifacts |
-| Release Please | `release-please.yml` | push to `next` | Maintains release-PR with version bump and CHANGELOG |
+| CI | `ci.yml` | push to `next`/`after`/`before`, pull_request | Validates code quality, tests, and plugin-dispatch performance |
+| Acceptance | `acceptance.yml` | push to `next`/`before`, pull_request, weekly schedule | End-to-end installation and behavior tests across OS matrix (advisory on `after`) |
+| Performance bench | `perf-bench.yml` | push to `next`, pull_request to `next` | Measures latency per-operation against per-operation thresholds |
+| Release (next) | `release.yml` | push of `v*` tag from `next` | Builds and publishes regular release artifacts |
+| Release Please (next) | `release-please-next.yml` | push to `next` | Maintains release-PR with version bump and CHANGELOG for upcoming release |
+| Release Please (before) | `release-please-before.yml` | push to `before` | Maintains release-PR with patch version bump for backport release |
 | Auto-merge Dependabot | `auto-merge-dependabot.yml` | dependabot PR opened | Auto-merges minor/patch updates for permitted ecosystems |
-| Post-release sync | `post-release-sync.yml` | release published | Merges `next` → `main` to keep stable branch in sync |
+| Post-release sync | `post-release-sync.yml` | release published from `next` | Merges `next` → `main` to keep stable branch in sync |
 
 No deploy workflows. shy is distributed via GitHub Releases (for
 `curl | bash` install) and via OS packages (`.deb`/`.rpm` built by
@@ -73,39 +75,70 @@ to deploy to.
   2. Run `goreleaser check`
 - **Required for merge:** yes (on PRs touching `.goreleaser.yaml`)
 
-### `plugin-dispatch-perf`
-
-- **Runs on:** `ubuntu-latest`
-- **Steps:**
-  1. Checkout
-  2. Setup Go
-  3. Build `shy` binary
-  4. Install reference plugin from `examples/plugins/hello-world/`
-  5. Measure dispatch overhead: run `shy hello-world` 100 times,
-     compute median wall-clock duration
-  6. Compare against threshold (default: 100ms median); fail if
-     exceeded
-- **Required for merge:** yes (on PRs touching `cli/internal/cmd/**`
-  or anything that affects plugin lookup)
-
-The threshold is calibrated against standard GitHub Actions
-runners (currently `ubuntu-latest` ≈ 2-core x86_64). Threshold can
-be raised to `200ms` on slower runners if measurements consistently
-hit ceiling without regression in shy itself. Threshold value lives
-in the workflow YAML as an environment variable to keep
-adjustments cheap.
-
 **Path-based skip.** Each job has a `paths-ignore` or `paths`
 filter so docs-only PRs skip Go/shell jobs entirely. This keeps CI
 fast for trivial changes.
+
+## Performance benchmark workflow
+
+**File:** `.github/workflows/perf-bench.yml`
+
+**Trigger:** every push to `next`; every pull_request targeting
+`next`.
+
+**Purpose:** Measure latency per-operation against per-operation
+thresholds. Granular metrics catch performance regression in
+specific subsystems rather than masking it in a single aggregate
+number.
+
+**Per-operation thresholds:**
+
+| Operation | Threshold | UX zone |
+|---|---|---|
+| Tab-completion roundtrip (`shy <tab>`) | <50ms | Doherty instant |
+| Native subcommand (`shy list`, `shy info`) | <100ms | Nielsen direct response |
+| Plugin-dispatch overhead (v1, no sandbox) | <50ms | Doherty instant |
+| Plugin-dispatch overhead (v2, with sandbox) | <100ms | Nielsen direct response |
+| `init.bash` sourcing at shell startup | <200ms | Acceptable for workspace startup |
+| `shy install <local-path>` | <500ms | I/O-bound, generous |
+| `shy publish <name>` (no push) | <1000ms | Involves git operations |
+
+**Aggregate threshold:** 200ms for the median across all measured
+operations as a smoke-test sanity check. If aggregate exceeds
+200ms but no individual operation exceeds its specific threshold,
+investigate why the distribution shifted.
+
+**Implementation:**
+
+- A `bench/` directory in the Go source contains separate
+  benchmark functions per operation.
+- The workflow runs `go test -bench=. -benchtime=20x ./bench/...`
+  to get 20 measurements per operation.
+- A small parser reads the output, computes median and 95th
+  percentile per operation, compares against thresholds defined
+  in `bench/thresholds.json`.
+- Failure output names the specific operation and the measured
+  vs. expected: `tab-completion: 78ms (threshold 50ms)`.
+- Trend reports written to a benchmark-result artifact stored on
+  the workflow run; allows tracking drift over time.
+
+**Required for merge:** yes (on PRs touching `cli/internal/cmd/**`,
+`cli/internal/manifest/**`, `cli/internal/install/**`).
+
+**Threshold maintenance:** Thresholds live in `bench/thresholds.
+json` and can be edited via PR. Loosening a threshold requires
+operator review with explanation in the PR description (why is
+this slower now? is it justified?). Tightening a threshold is
+always welcome.
 
 ## Acceptance workflow
 
 **File:** `.github/workflows/acceptance.yml`
 
-**Trigger:** every push to `next`; every pull_request targeting
-`next` or `main`; weekly schedule (Sunday 06:00 UTC) to catch
-upstream OS image drift.
+**Trigger:** every push to `next` and `before`; every pull_request
+targeting `next` or `before`; weekly schedule (Sunday 06:00 UTC)
+to catch upstream OS image drift. Also runs on `after` but in
+**advisory mode** — results reported but not blocking.
 
 **Purpose:** End-to-end installation and behavior validation
 across a matrix of operating systems. Acts as the automated
@@ -216,9 +249,15 @@ please when its release-PR is merged).
 **Permissions:** `contents: write` (to publish release), `id-
 token: write` (if signing is added later).
 
-## Release Please workflow
+## Release Please workflows
 
-**File:** `.github/workflows/release-please.yml`
+Two separate release-please workflows, one per release-producing
+branch. Both use the `googleapis/release-please-action@v4` action
+with different configuration.
+
+### Release Please for `next` (regular releases)
+
+**File:** `.github/workflows/release-please-next.yml`
 
 **Trigger:** every push to `next`.
 
@@ -227,9 +266,10 @@ token: write` (if signing is added later).
 1. Run `googleapis/release-please-action@v4` with
    `release-please-config.json` and `.release-please-manifest.
    json`.
-2. The action reads commit history since the last release tag,
-   classifies commits by type (Conventional Commits), computes
-   the next version, and updates or creates a release-PR.
+2. The action reads commit history since the last release tag
+   reachable from `next`, classifies commits by type (Conventional
+   Commits), computes the next version, and updates or creates a
+   release-PR on `next`.
 3. When the release-PR is merged, the action creates the tag
    (which triggers the Release workflow).
 
@@ -241,6 +281,36 @@ token: write` (if signing is added later).
   `{"": "0.1.0"}`)
 
 **Permissions:** `contents: write`, `pull-requests: write`.
+
+### Release Please for `before` (backport releases)
+
+**File:** `.github/workflows/release-please-before.yml`
+
+**Trigger:** every push to `before`.
+
+**Steps:**
+
+1. Run `googleapis/release-please-action@v4` with
+   `release-please-config.json` (same config) but operating against
+   the `before` branch.
+2. The action reads commit history since the last release tag
+   reachable from `before` (typically a `v1.0.x` tag). Computes a
+   patch bump (`v1.0.x+1`) from the cherry-picked fix commits.
+3. Updates or creates a release-PR on `before`.
+4. When the release-PR is merged, the action tags and triggers the
+   Release workflow against the `before` branch.
+
+The config is intentionally the same JSON file — the difference is
+the branch context the action runs in. Release-please's algorithm
+naturally produces patch releases from cherry-picked fix commits
+on an older line.
+
+**Permissions:** same as the `next` workflow.
+
+**When `before` is inactive.** When no backport work is in flight,
+the `before` branch may not exist or may be dormant. The workflow
+still resides in `.github/workflows/` and is harmless when no
+pushes occur. No cleanup needed between backport efforts.
 
 ## Auto-merge Dependabot workflow
 
@@ -292,24 +362,52 @@ version.
 ## Branch protection enforcement
 
 The CI workflow's job names are the **required status checks**
-configured in `branch-protection.json`:
+configured in `branch-protection.json`. The protection ruleset
+differs per branch.
 
-For `next`:
+**For `next` (strict, hybrid path-based):**
 
 - `go-test` (when paths-changed match production paths)
 - `go-lint` (when paths-changed match `cli/**`)
 - `shell-lint` (when paths-changed match shell files)
 - `goreleaser-check` (when paths-changed match GoReleaser config)
-- `plugin-dispatch-perf` (when paths-changed affect plugin lookup)
+- `perf-bench/*` (per-operation thresholds, when paths-changed
+  affect benchmarked subsystems)
 - `acceptance/ubuntu-22.04`, `acceptance/ubuntu-24.04`,
   `acceptance/debian-12`, `acceptance/fedora-40`, `acceptance/macos`
-  (always required on PRs that touch production code)
+  (always required on PRs touching production code)
 
-For `main`:
+**For `main` (strict, automation-only):**
 
 - All of the above
-- `release-please` PR is the only entry point; manual PRs
-  rejected
+- `release-please` PR from `next` is the only entry point; manual
+  PRs rejected.
+
+**For `after` (relaxed, experimental):**
+
+- `go-test`, `go-lint`, `shell-lint` required (basic sanity)
+- `goreleaser-check` advisory (still runs but doesn't block)
+- `perf-bench/*` advisory (still runs but doesn't block; expect
+  regression during experimental work)
+- `acceptance/*` advisory (runs but doesn't block)
+
+Direct push permitted on `after` for the operator. External
+contributors still use PRs but with relaxed requirements.
+
+**For `before` (strict, backport-focused):**
+
+- Full required-status-checks like `next`, PLUS full acceptance
+  matrix as **required** (not advisory).
+- No direct push, even for operator. All backports via PR for
+  audit trail.
+- Required-for-merge: full CI, full acceptance, perf-bench, and
+  manual approval from operator.
+
+**Note on `after` and `before` non-existence.** When these
+branches don't exist (default state at v0.x start), no protection
+rules need to be configured. The bootstrap `branch-protection.
+json` includes rules for all four branches; the operator applies
+each ruleset when the corresponding branch is created.
 
 ## Security scanning
 
@@ -348,22 +446,28 @@ not required. The operator can run them ad hoc.
 For a private repo on the GitHub Pro plan, included minutes are
 3,000/month. Estimated burn:
 
-- CI on every push to `next` and every PR: ~3 min × ~50 events/
-  month = 150 min
+- CI on every push to `next`/`after`/`before` and every PR:
+  ~3 min × ~60 events/month = 180 min
 - Acceptance (5 matrix entries × ~5 min each, parallel): ~5 min
   wall-clock × ~50 events/month = 250 billed minutes
 - Weekly scheduled acceptance run: ~5 min × 4 = 20 min
+- Performance benchmark: ~2 min × ~50 events/month = 100 min
 - Release workflow: ~10 min × ~4 releases/month = 40 min
-- Release-please: ~30 sec × ~50 events/month = 25 min
+- Release-please (next + before): ~30 sec × ~60 events/month
+  = 30 min
 - Auto-merge Dependabot: negligible
 - Post-release sync: ~30 sec × ~4 releases/month = 2 min
 
-**Total ~490 min/month** — well within the 3,000 min/month
+**Total ~620 min/month** — well within the 3,000 min/month
 budget. Acceptance matrix is the largest single consumer; if
-budget tightens, reduce matrix to Ubuntu 22.04 + Fedora 40 +
-macOS during regular CI and run the full matrix only on weekly
-schedule. Once the repository becomes public at v1.0, CI minutes
-for public repos are unlimited.
+budget tightens:
+- Reduce matrix to Ubuntu 22.04 + Fedora 40 + macOS during regular
+  CI; run full matrix only on weekly schedule
+- Skip acceptance on `after` (it's advisory anyway)
+- Skip perf-bench on docs-only PRs
+
+Once the repository becomes public at v1.0, CI minutes for public
+repos are unlimited and this section becomes informational only.
 
 ## Observability
 
