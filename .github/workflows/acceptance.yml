@@ -40,17 +40,22 @@ jobs:
         run: |
           docker run --rm \
             -v "$PWD:/src" -w /src \
-            -e SHY_BIN=/src/dist/shy \
             ${{ matrix.image }} bash -c '
               set -euo pipefail
               if command -v apt-get >/dev/null 2>&1; then
                 apt-get update -qq
                 apt-get install -y -qq git curl ca-certificates bash >/dev/null
               elif command -v dnf >/dev/null 2>&1; then
-                dnf install -y -q git curl ca-certificates bash >/dev/null
+                dnf install -y -q git curl ca-certificates bash shadow-utils >/dev/null
               fi
-              ./scripts/acceptance-happy-path.sh
-              ./scripts/acceptance-negative-path.sh
+              useradd -m testuser
+              chmod -R a+rX /src
+              su -s /bin/bash testuser -c "
+                set -euo pipefail
+                cd /src
+                SHY_BIN=/src/dist/shy ./scripts/acceptance-happy-path.sh
+                SHY_BIN=/src/dist/shy ./scripts/acceptance-negative-path.sh
+              "
             '
 
   macos:

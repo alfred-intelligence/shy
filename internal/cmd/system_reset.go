@@ -43,6 +43,18 @@ func runSystemReset(in io.Reader, out io.Writer, yes bool) error {
 	}
 
 	targets := resetTargets()
+
+	if !yes {
+		if len(targets) > 0 {
+			fmt.Fprintln(out, "shy system-reset: the following directories will be deleted irreversibly:")
+			for _, t := range targets {
+				fmt.Fprintf(out, "  %s\n", t)
+			}
+		}
+		fmt.Fprintln(out, "\nshy system-reset: re-run with --yes-i-know to proceed.")
+		return errors.New("system-reset: aborted (no --yes-i-know)")
+	}
+
 	if len(targets) == 0 {
 		fmt.Fprintln(out, "shy system-reset: nothing to delete.")
 		return nil
@@ -51,11 +63,6 @@ func runSystemReset(in io.Reader, out io.Writer, yes bool) error {
 	fmt.Fprintln(out, "shy system-reset: the following directories will be deleted irreversibly:")
 	for _, t := range targets {
 		fmt.Fprintf(out, "  %s\n", t)
-	}
-
-	if !yes {
-		fmt.Fprintln(out, "\nshy system-reset: re-run with --yes-i-know to proceed.")
-		return errors.New("system-reset: aborted (no --yes-i-know)")
 	}
 
 	fmt.Fprintf(out, "\nType '%s' to confirm: ", resetConfirmWord)
