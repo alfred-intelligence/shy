@@ -5,6 +5,23 @@ All notable changes to shy are documented here. Entries follow
 file is maintained by [release-please](https://github.com/googleapis/release-please)
 from `next`.
 
+## [0.3.0](https://github.com/alfred-intelligence/shy/compare/v0.2.1...v0.3.0) (2026-05-22)
+
+
+### Features
+
+* Alias multi-word syntax, command groups, editor detection, shy completion in list ([0aa5eb8](https://github.com/alfred-intelligence/shy/commit/0aa5eb890f1f06e9ad7f710a653be35a9c246144))
+
+
+### Bug Fixes
+
+* **init:** Add ~/.shy/bin to PATH so shy is runnable after init ([5effd70](https://github.com/alfred-intelligence/shy/commit/5effd70efc641b15d36842aefda3935171b35fd6))
+* **install:** Handle bare-hash sha256 files from GoReleaser ([ecc379e](https://github.com/alfred-intelligence/shy/commit/ecc379ead6a95bf3b776dcb60f17f60da3608650))
+* **install:** Symlink shy into ~/.local/bin or ~/bin for shell-agnostic access ([ab5fd14](https://github.com/alfred-intelligence/shy/commit/ab5fd149c8f5a543c6af28a7eda5db191c33e280))
+* **release:** Add workflow_dispatch with optional tag input ([90e04c5](https://github.com/alfred-intelligence/shy/commit/90e04c576dadbd1e1270d40ab7cb87e8d454d577))
+* **release:** Chain GoReleaser from release-please via workflow_dispatch ([0aa51f7](https://github.com/alfred-intelligence/shy/commit/0aa51f7c61681ecc50ec4b00f2f4c662f89c45e0))
+* **release:** Restore release-please target-branch to next ([296ff18](https://github.com/alfred-intelligence/shy/commit/296ff18551d7355d9870f6d40741771247215f99))
+
 ## [0.2.1](https://github.com/alfred-intelligence/shy/compare/v0.2.0...v0.2.1) (2026-05-21)
 
 
