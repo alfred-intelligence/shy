@@ -101,7 +101,7 @@ func Bundle(dir string, opts Options, c *cache.Cache) (*Result, error) {
 	if len(m.Items) == 0 && (m.Type == "script" || m.Type == "plugin" || m.Entry != "") {
 		entry := m.Entry
 		if entry == "" {
-			entry = "./" + m.Name + ".sh"
+			entry = "./" + paths.EntryPoint
 		}
 		typ := m.Type
 		if typ == "" {
@@ -199,7 +199,7 @@ func installScriptOrPlugin(srcDir, home, namespace, name, kind, entry string, po
 		return nil, fmt.Errorf("install: mkdir %s: %w", destDir, err)
 	}
 	if entry == "" {
-		entry = "./" + name + ".sh"
+		entry = "./" + paths.EntryPoint
 	}
 	entry = filepath.Clean(entry)
 	srcEntry := filepath.Join(srcDir, entry)

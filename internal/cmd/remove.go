@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -77,13 +76,13 @@ func parseRemoveRef(home, ref string) (kind, ns, name string, err error) {
 	}
 	ns, name = parts[0], parts[1]
 	// Infer kind from where the item lives on disk.
-	if _, statErr := os.Stat(filepath.Join(home, "scripts", ns, name)); statErr == nil {
+	if _, statErr := os.Stat(paths.ScriptDir(home, ns, name)); statErr == nil {
 		return "script", ns, name, nil
 	}
-	if _, statErr := os.Stat(filepath.Join(home, "plugins", ns, name)); statErr == nil {
+	if _, statErr := os.Stat(paths.PluginDir(home, ns, name)); statErr == nil {
 		return "plugin", ns, name, nil
 	}
-	return "", "", "", fmt.Errorf("remove: %s/%s not found under scripts/ or plugins/", ns, name)
+	return "", "", "", fmt.Errorf("remove: %s/%s not found under installed/", ns, name)
 }
 
 func splitNS(s string) []string {

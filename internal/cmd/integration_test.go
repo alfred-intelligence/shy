@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/alfred-intelligence/shy/internal/paths"
 )
 
 // TestInitWritesLayout exercises the init runtime against an isolated
@@ -24,9 +26,10 @@ func TestInitWritesLayout(t *testing.T) {
 		t.Fatalf("init: %v", err)
 	}
 	for _, sub := range []string{
-		"scripts", "plugins", "aliases", "completions",
-		"collections", "overrides.d/scripts",
-		"overrides.d/aliases", "overrides.d/completions",
+		"installed",
+		"helpers/aliases", "helpers/completions",
+		"overrides.d/installed",
+		"overrides.d/helpers/aliases", "overrides.d/helpers/completions",
 	} {
 		if _, err := os.Stat(filepath.Join(home, sub)); err != nil {
 			t.Errorf("subdir %s missing: %v", sub, err)
@@ -42,7 +45,7 @@ func TestInitWritesLayout(t *testing.T) {
 	if !strings.Contains(string(data), "shy/init.bash") {
 		t.Errorf("bashrc missing source line, got: %q", data)
 	}
-	if _, err := os.Stat(filepath.Join(home, "completions", "shy")); err != nil {
+	if _, err := os.Stat(paths.CompletionFile(home, "shy")); err != nil {
 		t.Errorf("completion bootstrap missing: %v", err)
 	}
 
@@ -101,7 +104,7 @@ func TestEndToEndAliasAndList(t *testing.T) {
 		t.Errorf("expected alias 'll' in items: %+v", resp.Items)
 	}
 
-	aliasContent, err := os.ReadFile(filepath.Join(home, "aliases", "ll"))
+	aliasContent, err := os.ReadFile(paths.AliasFile(home, "ll"))
 	if err != nil {
 		t.Fatalf("alias file: %v", err)
 	}

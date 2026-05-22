@@ -129,9 +129,10 @@ git commit -m "Add Go module and stub binary"
 ## Step 3 — Write `init.bash` template
 
 **Task:** Create the shell template that `shy init` will install
-into `$HOME/.shy/`. Walks two levels deep for `scripts/` and
-`plugins/` (namespaced), flat for `aliases/` and `completions/`.
-Skips files whose names begin with `_` (private helpers).
+into `$HOME/.shy/`. Sources `entry.sh` from every script directory
+under `installed/%<ns>/<name>/`, and flat files from `helpers/aliases/`
+and `helpers/completions/`. Overrides sourced last from the matching
+`overrides.d/` paths.
 
 **Commands:**
 
@@ -693,16 +694,17 @@ once, auto-installs shy's own completion via its own mechanism.
 - If running as root: print hint about `shy system-install` and exit
 - Create `$HOME/.shy/` with `chmod 700` (protects against other
   users on shared hosts)
-- Create subdirectories
-  (`scripts/`, `aliases/`, `completions/`, `plugins/`,
-  `overrides.d/{scripts,aliases,completions}/`) — subdirectories
+- Create subdirectories:
+  `installed/`, `helpers/aliases/`, `helpers/completions/`,
+  `overrides.d/installed/`, `overrides.d/helpers/aliases/`,
+  `overrides.d/helpers/completions/` — subdirectories
   inherit standard permissions from umask
 - Write `init.bash` if missing
 - Add `[ -f "$HOME/.shy/init.bash" ] && source "$HOME/.shy/init.bash"`
   to `~/.bashrc` if not already present (interactive prompt unless
   `--no-bashrc` is passed; idempotent)
 - Generate `shy completion bash` output and write it to
-  `$HOME/.shy/completions/shy` (shy bootstrapping its own
+  `$HOME/.shy/helpers/completions/shy` (shy bootstrapping its own
   completion via its own mechanism — a sanity check that the
   mechanism works end-to-end)
 - Print summary: directories created, files written, bashrc modified
@@ -720,7 +722,7 @@ bashrc-line-detection, and completion-bootstrap.
 - `init.bash` is written if missing
 - `.bashrc` gets one source line; running `shy init` again does not
   duplicate it
-- `~/.shy/completions/shy` contains shy's own bash-completion
+- `~/.shy/helpers/completions/shy` contains shy's own bash-completion
 - `sudo shy init` refuses with the hint message pointing to
   `shy system-install`
 - Integration test: source the new init.bash in a fresh bash; no
@@ -747,14 +749,15 @@ bundles. Defer URL and `@user/repo` syntax to Step 15.
   - Validate type-specific fields (plugin needs command, alias
     needs value, etc.)
   - For scripts: create
-    `$SHY_HOME/scripts/<namespace>/<name>/`, copy `.sh` files and
-    `manifest.toml` and optional `README.md`
-  - For plugins: same path under `plugins/`
-  - For aliases: write `$SHY_HOME/aliases/<name>` with `alias`
+    `$SHY_HOME/installed/%<namespace>/<name>/`, write `entry.sh`
+    as the canonical entry point, and copy `manifest.toml` and optional
+    `README.md`
+  - For plugins: same pattern under `installed/@<namespace>/<name>/`
+  - For aliases: write `$SHY_HOME/helpers/aliases/<name>` with `alias`
     line; if file exists with different content, trigger conflict
     flow
-  - For completions: write `$SHY_HOME/completions/<tool>` with the
-    captured output of `<generate>` command; same conflict
+  - For completions: write `$SHY_HOME/helpers/completions/<tool>` with
+    the captured output of `<generate>` command; same conflict
     semantics
 - Update `cache.json` with installation record (namespace, name,
   source, version, pinned commit/ref)

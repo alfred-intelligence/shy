@@ -189,7 +189,7 @@ func bashrcPath() (string, error) {
 }
 
 func bootstrapShyCompletion(home string) error {
-	dst := filepath.Join(home, "completions", "shy")
+	dst := paths.CompletionFile(home, "shy")
 	if _, err := os.Stat(dst); err == nil {
 		return nil
 	}

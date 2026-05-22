@@ -181,10 +181,11 @@ setup automatically. This is opt-in and never altered by package
 installation. See § Seed model for new users below.
 
 **2. The shell layer.** A small `init.bash` file sourced from
-`~/.bashrc`. It walks `$HOME/.shy/scripts/`, `aliases/`,
-`completions/`, and `overrides.d/` and sources each file. One bad
-file does not break shell startup — errors are reported per-file to
-stderr while sourcing continues.
+`~/.bashrc`. It sources `entry.sh` from every `installed/%<ns>/<name>/`
+directory (scripts), and flat files from `helpers/aliases/` and
+`helpers/completions/`. Override equivalents under `overrides.d/` are
+sourced last to win any conflicts. One bad file does not break shell
+startup — errors are reported per-file to stderr while sourcing continues.
 
 **3. The manifest format (TOML).** Every package — whether a
 single-script repo or a multi-item collection — uses the same
@@ -223,23 +224,38 @@ adding a single source line. No other state lives outside of
 ```
 $HOME/.shy/                      ← Per-user, owned by user, chmod 700
 ├── init.bash                    ← Sourced from ~/.bashrc
-├── scripts/                     ← Sourced at runtime, first
-│   └── <namespace>/<name>/      ← *.sh files sourced; _*.sh skipped
-├── plugins/                     ← Not sourced; dispatched on `shy <command>`
-│   └── <namespace>/<name>/
-├── aliases/                     ← Flat files, all sourced
-├── completions/                 ← Flat files, all sourced
-├── overrides.d/                 ← Sourced at runtime, last (wins on conflict)
-│   ├── scripts/<namespace>/<name>/
+├── installed/                   ← All installed items; directory prefix encodes type
+│   ├── %<namespace>/<name>/     ← % = script — entry.sh sourced at shell start
+│   ├── @<namespace>/<name>/     ← @ = plugin — exec'd on `shy <command>`
+│   └── #<name>/                 ← # = collection clone (raw git checkout)
+├── helpers/                     ← Flat files, all sourced
 │   ├── aliases/
 │   └── completions/
-├── collections/                 ← Cloned subscribed collections
+├── overrides.d/                 ← Sourced last; re-defines items from user layer
+│   ├── installed/%<namespace>/<name>/
+│   └── helpers/
+│       ├── aliases/
+│       └── completions/
+├── bin/                         ← shy binary + any plugin launchers
 └── cache.json                   ← Internal runtime cache; not a plugin API
 
 /etc/skel/.shy/                  ← Seed for *new* users (optional)
 ├── init.bash                    ← Default init script template
 └── shy.toml                     ← Default config (empty)
 ```
+
+**Directory prefix convention** — a single symbol as the first character of the
+namespace directory communicates the type without a separate layer:
+
+| Prefix | Type | Sourced at start? |
+|--------|------|-------------------|
+| `%` | script | yes — `entry.sh` sourced into the shell |
+| `@` | plugin | no — exec'd on demand |
+| `#` | collection | no — raw clone, content installed elsewhere |
+
+**Entry point** — every script and plugin directory contains an `entry.sh` file
+as its canonical entry point. Helper files within the same directory may have
+any name; only `entry.sh` is sourced/exec'd by shy itself.
 
 Two locations, both per-user-scoped at runtime:
 
@@ -264,7 +280,7 @@ content.
 **Scripts and plugins are namespaced; aliases and completions are
 not.**
 
-A script lives at `$HOME/.shy/scripts/<namespace>/<name>/<name>.sh`.
+A script lives at `$HOME/.shy/installed/%<namespace>/<name>/entry.sh`.
 The `<namespace>` comes from:
 
 - **Published items**: `<namespace>` is the author handle from the

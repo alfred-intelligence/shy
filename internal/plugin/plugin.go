@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 // Package plugin discovers installed plugins by walking
-// $SHY_HOME/plugins/<namespace>/<name>/manifest.toml and indexing each
+// $SHY_HOME/installed/@*/<name>/manifest.toml and indexing each
 // item whose type is "plugin". The index lives in cache.json's Plugins
 // map so `shy <command>` can resolve dispatchable plugin commands
 // without re-walking the filesystem on every invocation.
@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/alfred-intelligence/shy/internal/cache"
 	"github.com/alfred-intelligence/shy/internal/manifest"
@@ -28,12 +29,12 @@ type Entry struct {
 	Description string `json:"description,omitempty"`
 }
 
-// Discover walks the plugins/ tree, parses each manifest, and returns
-// one entry per item declared with type="plugin". Plugins missing the
-// `command` field are skipped (the manifest validator rejects them at
-// install time, but discovery is forgiving).
+// Discover walks installed/@* directories, parses each manifest, and
+// returns one entry per item declared with type="plugin". Plugins
+// missing the `command` field are skipped (the manifest validator
+// rejects them at install time, but discovery is forgiving).
 func Discover(home string) ([]Entry, error) {
-	root := filepath.Join(home, "plugins")
+	root := filepath.Join(home, "installed")
 	info, err := os.Stat(root)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -54,6 +55,12 @@ func Discover(home string) ([]Entry, error) {
 		if !ns.IsDir() {
 			continue
 		}
+		// Only process @-prefixed namespace dirs (plugin namespaces).
+		if !strings.HasPrefix(ns.Name(), paths.PluginPrefix) {
+			continue
+		}
+		// Strip the @ prefix to get the actual namespace name.
+		nsName := ns.Name()[len(paths.PluginPrefix):]
 		nsDir := filepath.Join(root, ns.Name())
 		names, err := os.ReadDir(nsDir)
 		if err != nil {
@@ -64,7 +71,7 @@ func Discover(home string) ([]Entry, error) {
 				continue
 			}
 			dir := filepath.Join(nsDir, n.Name())
-			entries, err := parseManifest(dir, ns.Name(), n.Name())
+			entries, err := parseManifest(dir, nsName, n.Name())
 			if err != nil {
 				continue
 			}
@@ -88,7 +95,7 @@ func parseManifest(dir, namespace, name string) ([]Entry, error) {
 	if m.Type == "plugin" && m.Command != "" {
 		entry := m.Entry
 		if entry == "" {
-			entry = "./" + name + ".sh"
+			entry = "./" + paths.EntryPoint
 		}
 		out = append(out, Entry{
 			Command:     m.Command,
@@ -105,7 +112,7 @@ func parseManifest(dir, namespace, name string) ([]Entry, error) {
 		}
 		entry := it.Path
 		if entry == "" {
-			entry = "./" + it.Name + ".sh"
+			entry = "./" + paths.EntryPoint
 		}
 		out = append(out, Entry{
 			Command:     it.Command,
@@ -155,13 +162,13 @@ func Lookup(c *cache.Cache, command string) (cache.PluginEntry, bool) {
 }
 
 // EnsureFresh runs Rebuild only if the cache has no plugin entries but
-// the plugins directory has subdirectories. Used as a self-heal so a
-// stale cache.json doesn't permanently hide installed plugins.
+// the installed/ directory has @-prefixed subdirectories. Used as a
+// self-heal so a stale cache.json doesn't permanently hide installed plugins.
 func EnsureFresh(home string, c *cache.Cache) error {
 	if len(c.Plugins) > 0 {
 		return nil
 	}
-	dir := filepath.Join(home, "plugins")
+	dir := filepath.Join(home, "installed")
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -170,7 +177,7 @@ func EnsureFresh(home string, c *cache.Cache) error {
 		return nil
 	}
 	for _, e := range entries {
-		if e.IsDir() {
+		if e.IsDir() && strings.HasPrefix(e.Name(), paths.PluginPrefix) {
 			return Rebuild(home, c)
 		}
 	}

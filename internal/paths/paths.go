@@ -47,18 +47,28 @@ func Home() (string, error) {
 	return filepath.Join(h, ".shy"), nil
 }
 
+// ScriptPrefix is the filesystem prefix that marks an installed script namespace.
+const ScriptPrefix = "%"
+
+// PluginPrefix is the filesystem prefix that marks an installed plugin namespace.
+const PluginPrefix = "@"
+
+// CollectionPrefix is the filesystem prefix that marks an installed collection.
+const CollectionPrefix = "#"
+
+// EntryPoint is the fixed filename used for script and plugin entry scripts.
+const EntryPoint = "entry.sh"
+
 // Subdirs enumerates the directories created by shy init.
 func Subdirs(home string) []string {
 	return []string{
 		filepath.Join(home, "bin"),
-		filepath.Join(home, "scripts"),
-		filepath.Join(home, "plugins"),
-		filepath.Join(home, "aliases"),
-		filepath.Join(home, "completions"),
-		filepath.Join(home, "collections"),
-		filepath.Join(home, "overrides.d", "scripts"),
-		filepath.Join(home, "overrides.d", "aliases"),
-		filepath.Join(home, "overrides.d", "completions"),
+		filepath.Join(home, "installed"),
+		filepath.Join(home, "helpers", "aliases"),
+		filepath.Join(home, "helpers", "completions"),
+		filepath.Join(home, "overrides.d", "installed"),
+		filepath.Join(home, "overrides.d", "helpers", "aliases"),
+		filepath.Join(home, "overrides.d", "helpers", "completions"),
 	}
 }
 
@@ -108,26 +118,29 @@ func NamespaceFromRepo(repo string) string {
 }
 
 // ScriptDir is the absolute path of an installed script.
+// Scripts live under installed/%<namespace>/<name>.
 func ScriptDir(home, namespace, name string) string {
-	return filepath.Join(home, "scripts", namespace, name)
+	return filepath.Join(home, "installed", ScriptPrefix+namespace, name)
 }
 
 // PluginDir is the absolute path of an installed plugin.
+// Plugins live under installed/@<namespace>/<name>.
 func PluginDir(home, namespace, name string) string {
-	return filepath.Join(home, "plugins", namespace, name)
+	return filepath.Join(home, "installed", PluginPrefix+namespace, name)
 }
 
 // AliasFile is the path of a single alias file (flat).
 func AliasFile(home, name string) string {
-	return filepath.Join(home, "aliases", name)
+	return filepath.Join(home, "helpers", "aliases", name)
 }
 
 // CompletionFile is the path of a single completion file (flat).
 func CompletionFile(home, tool string) string {
-	return filepath.Join(home, "completions", tool)
+	return filepath.Join(home, "helpers", "completions", tool)
 }
 
 // CollectionDir is the local clone path of a subscribed collection.
+// Collections live under installed/#<name>.
 func CollectionDir(home, name string) string {
-	return filepath.Join(home, "collections", name)
+	return filepath.Join(home, "installed", CollectionPrefix+name)
 }

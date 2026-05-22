@@ -17,7 +17,7 @@ import (
 func newAliasCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "alias <name>=<value...>",
-		Short: "Add (or overwrite) an alias as a flat file under $SHY_HOME/aliases",
+		Short: "Add (or overwrite) an alias as a flat file under $SHY_HOME/helpers/aliases",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAlias(cmd.OutOrStdout(), args)

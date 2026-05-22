@@ -103,8 +103,7 @@ func splitRef(s string) (ns, name string, ok bool) {
 }
 
 func findItemDir(home, ns, name string) (string, bool) {
-	for _, base := range []string{"scripts", "plugins"} {
-		dir := filepath.Join(home, base, ns, name)
+	for _, dir := range []string{paths.ScriptDir(home, ns, name), paths.PluginDir(home, ns, name)} {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
 			return dir, true
 		}

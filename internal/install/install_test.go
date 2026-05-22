@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/alfred-intelligence/shy/internal/cache"
+	"github.com/alfred-intelligence/shy/internal/paths"
 )
 
 func TestBundleScriptWithSource(t *testing.T) {
@@ -33,11 +34,11 @@ repo = "alice/git-autofetch"
 	if len(res.Installed) != 1 {
 		t.Fatalf("installed=%d", len(res.Installed))
 	}
-	want := filepath.Join(home, "scripts", "alice", "git-autofetch", "git-autofetch.sh")
+	want := filepath.Join(paths.ScriptDir(home, "alice", "git-autofetch"), "git-autofetch.sh")
 	if _, err := os.Stat(want); err != nil {
 		t.Errorf("expected %s, got %v", want, err)
 	}
-	helperPath := filepath.Join(home, "scripts", "alice", "git-autofetch", "_helper.sh")
+	helperPath := filepath.Join(paths.ScriptDir(home, "alice", "git-autofetch"), "_helper.sh")
 	if _, err := os.Stat(helperPath); err != nil {
 		t.Errorf("expected helper at %s, got %v", helperPath, err)
 	}
@@ -52,7 +53,7 @@ name = "my-script"
 version = "0.1.0"
 type = "script"
 `)
-	mustWrite(t, filepath.Join(src, "my-script.sh"), "#!/usr/bin/env bash\n")
+	mustWrite(t, filepath.Join(src, paths.EntryPoint), "#!/usr/bin/env bash\n")
 
 	c, _ := cache.Load(filepath.Join(home, "cache.json"))
 	if _, err := Bundle(src, Options{Home: home, Source: "local"}, c); err != nil {
@@ -101,10 +102,10 @@ la = "ls -A"
 	if len(res.Installed) != 3 {
 		t.Fatalf("installed=%d items, want 3 (script, alias ll, alias la)", len(res.Installed))
 	}
-	if _, err := os.Stat(filepath.Join(home, "aliases", "ll")); err != nil {
+	if _, err := os.Stat(paths.AliasFile(home, "ll")); err != nil {
 		t.Errorf("alias ll: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(home, "aliases", "la")); err != nil {
+	if _, err := os.Stat(paths.AliasFile(home, "la")); err != nil {
 		t.Errorf("alias la: %v", err)
 	}
 }
@@ -138,7 +139,7 @@ ll = "ls -la"
 	if _, err := Bundle(src, Options{Home: home, Source: "local", Policy: ConflictPreferNew}, c); err != nil {
 		t.Errorf("prefer-new: %v", err)
 	}
-	data, _ := os.ReadFile(filepath.Join(home, "aliases", "ll"))
+	data, _ := os.ReadFile(paths.AliasFile(home, "ll"))
 	if string(data) != "alias ll='ls -la'\n" {
 		t.Errorf("alias after prefer-new: %q", data)
 	}
@@ -148,7 +149,7 @@ func TestRemoveItem(t *testing.T) {
 	home := t.TempDir()
 	c, _ := cache.Load(filepath.Join(home, "cache.json"))
 	c.Add(cache.Installed{Type: "alias", Name: "ll"})
-	mustWrite(t, filepath.Join(home, "aliases", "ll"), "alias ll='ls -alh'\n")
+	mustWrite(t, paths.AliasFile(home, "ll"), "alias ll='ls -alh'\n")
 	removed, err := RemoveItem(home, "alias", "", "ll", c)
 	if err != nil {
 		t.Fatalf("remove: %v", err)
@@ -156,7 +157,7 @@ func TestRemoveItem(t *testing.T) {
 	if !removed {
 		t.Error("expected removed=true")
 	}
-	if _, err := os.Stat(filepath.Join(home, "aliases", "ll")); err == nil {
+	if _, err := os.Stat(paths.AliasFile(home, "ll")); err == nil {
 		t.Error("alias file still present after remove")
 	}
 }

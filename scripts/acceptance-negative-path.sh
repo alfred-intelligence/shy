@@ -36,8 +36,8 @@ printf 'name = invalid toml ===\n' >"$tmp/bad/manifest.toml"
 assert_fails "install-bad-manifest" "$bin" install "$tmp/bad"
 
 # 4. semver override that isn't a semver — validation error
-mkdir -p "$tmp/draft" "$SHY_HOME/scripts/host/draft"
-echo '#!/usr/bin/env bash' >"$SHY_HOME/scripts/host/draft/draft.sh"
+mkdir -p "$tmp/draft" "$SHY_HOME/installed/%host/draft"
+echo '#!/usr/bin/env bash' >"$SHY_HOME/installed/%host/draft/entry.sh"
 assert_fails "publish-bad-version" "$bin" publish draft --version not-a-version
 
 # 5. override add without root — refusal

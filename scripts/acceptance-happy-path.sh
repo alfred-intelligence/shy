@@ -50,7 +50,7 @@ git config --global user.name "acceptance"
 git config --global user.email "acceptance@example.com"
 "$bin" create my-first --no-editor >/dev/null
 "$bin" publish my-first --version 0.1.0 </dev/null >/dev/null
-test -f "$SHY_HOME/scripts/acceptance/my-first/manifest.toml" || {
+test -f "$SHY_HOME/installed/%acceptance/my-first/manifest.toml" || {
     echo "publish did not move to author namespace"; exit 1; }
 
 # 4. install reference plugin and dispatch

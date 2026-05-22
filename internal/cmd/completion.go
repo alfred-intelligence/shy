@@ -47,7 +47,7 @@ func newShellCompletionCmd(name, short string, gen func(*cobra.Command, io.Write
 func newCompletionAddCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "add <tool>",
-		Short: "Capture <tool>'s bash completion into $SHY_HOME/completions/<tool>",
+		Short: "Capture <tool>'s bash completion into $SHY_HOME/helpers/completions/<tool>",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCompletionAdd(cmd.OutOrStdout(), args[0])

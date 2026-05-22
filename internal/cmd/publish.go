@@ -52,7 +52,7 @@ func runPublish(in io.Reader, out io.Writer, name, versionOverride string, toGit
 		return err
 	}
 	if !found {
-		return fmt.Errorf("publish: no script named %q under $SHY_HOME/scripts/", name)
+		return fmt.Errorf("publish: no script named %q under $SHY_HOME/installed/", name)
 	}
 
 	state, gitDir, err := authoring.DetectGit(dir)
@@ -202,14 +202,14 @@ version = "%s"
 description = "%s"
 license = "%s"
 type = "script"
-entry = "./%s.sh"
+entry = "./%s"
 
 [source]
 repo = "%s/%s"
 
 [requires]
 bash = ">=4"
-`, name, version, description, license, name, author, name)
+`, name, version, description, license, paths.EntryPoint, author, name)
 }
 
 func stageAndCommit(dir, msg string) {
@@ -223,16 +223,17 @@ func stageAndCommit(dir, msg string) {
 
 func moveToUserNamespace(home, dir, author, name string) (string, bool, error) {
 	parent := filepath.Dir(dir)
-	currentNS := filepath.Base(parent)
-	if currentNS == author {
+	currentNS := filepath.Base(parent) // e.g. "%hostname"
+	authorNS := paths.ScriptPrefix + paths.SafeName(author)
+	if currentNS == authorNS {
 		return dir, false, nil
 	}
-	// Only move if currently under scripts/<host>/<name>
+	// Only move if currently under installed/%<host>/<name>
 	hostNS, _ := paths.HostNamespace()
-	if currentNS != hostNS {
+	if currentNS != paths.ScriptPrefix+hostNS {
 		return dir, false, nil
 	}
-	newParent := filepath.Join(home, "scripts", paths.SafeName(author))
+	newParent := filepath.Join(home, "installed", authorNS)
 	if err := os.MkdirAll(newParent, 0o755); err != nil {
 		return "", false, fmt.Errorf("publish: mkdir: %w", err)
 	}
@@ -268,8 +269,8 @@ func inParentRepoError(scriptDir, gitDir string) error {
 }
 
 func findScriptDir(home, name string) (string, bool, error) {
-	scripts := filepath.Join(home, "scripts")
-	entries, err := os.ReadDir(scripts)
+	installed := filepath.Join(home, "installed")
+	entries, err := os.ReadDir(installed)
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", false, nil
 	}
@@ -280,7 +281,10 @@ func findScriptDir(home, name string) (string, bool, error) {
 		if !ns.IsDir() {
 			continue
 		}
-		candidate := filepath.Join(scripts, ns.Name(), name)
+		if !strings.HasPrefix(ns.Name(), paths.ScriptPrefix) {
+			continue
+		}
+		candidate := filepath.Join(installed, ns.Name(), name)
 		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
 			return candidate, true, nil
 		}

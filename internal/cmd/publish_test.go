@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/alfred-intelligence/shy/internal/paths"
 )
 
 func TestCreateScaffolds(t *testing.T) {
@@ -19,10 +21,10 @@ func TestCreateScaffolds(t *testing.T) {
 	if err := runCreate(out, "demo", true); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	// Find the scaffolded directory under any namespace.
-	matches, _ := filepath.Glob(filepath.Join(home, "scripts", "*", "demo", "demo.sh"))
+	// Find the scaffolded entry.sh under any %-prefixed namespace.
+	matches, _ := filepath.Glob(filepath.Join(home, "installed", paths.ScriptPrefix+"*", "demo", paths.EntryPoint))
 	if len(matches) != 1 {
-		t.Fatalf("expected 1 demo.sh, got %v", matches)
+		t.Fatalf("expected 1 %s, got %v", paths.EntryPoint, matches)
 	}
 	body, _ := os.ReadFile(matches[0])
 	if !strings.Contains(string(body), "#!/usr/bin/env bash") {
@@ -44,11 +46,11 @@ func TestPublishInsideParentRefuses(t *testing.T) {
 	}
 	runGitWithName(t, parent, "tester", "init", "-q", "-b", "main")
 
-	scriptDir := filepath.Join(home, "scripts", "host", "inside")
+	scriptDir := filepath.Join(home, "installed", paths.ScriptPrefix+"host", "inside")
 	if err := os.MkdirAll(scriptDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(scriptDir, "inside.sh"), []byte("#!/usr/bin/env bash\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(scriptDir, paths.EntryPoint), []byte("#!/usr/bin/env bash\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	// Plant a .git directory above by symlinking parent's .git up. Easier:
@@ -56,11 +58,11 @@ func TestPublishInsideParentRefuses(t *testing.T) {
 	if err := os.Rename(scriptDir, filepath.Join(parent, "inside")); err != nil {
 		t.Fatal(err)
 	}
-	// Re-layout so findScriptDir sees it: place a sibling tree under scripts/.
-	if err := os.MkdirAll(filepath.Join(home, "scripts", "host"), 0o755); err != nil {
+	// Re-layout so findScriptDir sees it: place a sibling tree under installed/.
+	if err := os.MkdirAll(filepath.Join(home, "installed", paths.ScriptPrefix+"host"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(parent, "inside"), filepath.Join(home, "scripts", "host", "inside")); err != nil {
+	if err := os.Symlink(filepath.Join(parent, "inside"), filepath.Join(home, "installed", paths.ScriptPrefix+"host", "inside")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,7 +92,7 @@ func TestPublishHappyPathInitsGitAndMoves(t *testing.T) {
 	if err := runPublish(strings.NewReader(""), out, "demo", "0.3.1", false); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	manifestPath := filepath.Join(home, "scripts", "alice", "demo", "manifest.toml")
+	manifestPath := filepath.Join(paths.ScriptDir(home, "alice", "demo"), "manifest.toml")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		t.Fatalf("manifest at %s: %v", manifestPath, err)

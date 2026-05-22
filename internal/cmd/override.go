@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -55,9 +56,41 @@ func runOverrideList(out io.Writer) error {
 	}
 	seen := map[string]*overrideEntry{}
 	scan := func(root string, isSystem bool) error {
-		for _, kind := range []string{"scripts", "aliases", "completions"} {
-			dir := filepath.Join(root, "overrides.d", kind)
-			entries, err := os.ReadDir(dir)
+		// Scan scripts: look for %-prefixed namespace dirs under overrides.d/installed/
+		scriptsDir := filepath.Join(root, "overrides.d", "installed")
+		nsEntries, err := os.ReadDir(scriptsDir)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		for _, ns := range nsEntries {
+			if !ns.IsDir() || !strings.HasPrefix(ns.Name(), paths.ScriptPrefix) {
+				continue
+			}
+			nsDir := filepath.Join(scriptsDir, ns.Name())
+			nameEntries, err := os.ReadDir(nsDir)
+			if err != nil {
+				continue
+			}
+			for _, e := range nameEntries {
+				key := "scripts/" + ns.Name() + "/" + e.Name()
+				ent, ok := seen[key]
+				if !ok {
+					ent = &overrideEntry{Kind: "script", Name: ns.Name() + "/" + e.Name()}
+					seen[key] = ent
+				}
+				if isSystem {
+					ent.System = true
+				} else {
+					ent.User = true
+				}
+			}
+		}
+		// Scan aliases and completions under helpers/
+		for _, pair := range []struct{ kind, subpath string }{
+			{"aliases", filepath.Join(root, "overrides.d", "helpers", "aliases")},
+			{"completions", filepath.Join(root, "overrides.d", "helpers", "completions")},
+		} {
+			entries, err := os.ReadDir(pair.subpath)
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
@@ -65,10 +98,10 @@ func runOverrideList(out io.Writer) error {
 				return err
 			}
 			for _, e := range entries {
-				key := kind + "/" + e.Name()
+				key := pair.kind + "/" + e.Name()
 				ent, ok := seen[key]
 				if !ok {
-					ent = &overrideEntry{Kind: kindSingular(kind), Name: e.Name()}
+					ent = &overrideEntry{Kind: kindSingular(pair.kind), Name: e.Name()}
 					seen[key] = ent
 				}
 				if isSystem {
@@ -151,7 +184,18 @@ func runOverrideAdd(out io.Writer, ref string) error {
 	if err != nil {
 		return err
 	}
-	dstDir := filepath.Join(paths.SystemSeed(), "overrides.d", kindPlural(kind))
+	var dstDir string
+	switch kind {
+	case "alias":
+		dstDir = filepath.Join(paths.SystemSeed(), "overrides.d", "helpers", "aliases")
+	case "completion":
+		dstDir = filepath.Join(paths.SystemSeed(), "overrides.d", "helpers", "completions")
+	case "script":
+		// Derive the prefixed namespace from the source path.
+		srcNSDir := filepath.Dir(source)
+		nsEntry := filepath.Base(srcNSDir) // gives %<ns>
+		dstDir = filepath.Join(paths.SystemSeed(), "overrides.d", "installed", nsEntry)
+	}
 	if err := os.MkdirAll(dstDir, 0o755); err != nil {
 		return fmt.Errorf("override add: mkdir %s: %w", dstDir, err)
 	}
@@ -184,7 +228,22 @@ func runOverrideRemove(out io.Writer, ref string) error {
 	if err != nil {
 		return err
 	}
-	dst := filepath.Join(paths.SystemSeed(), "overrides.d", kindPlural(kind), name)
+	// Find the source to determine the prefixed namespace for scripts.
+	source, err := findUserCopy(kind, name)
+	if err != nil {
+		return err
+	}
+	var dst string
+	switch kind {
+	case "alias":
+		dst = filepath.Join(paths.SystemSeed(), "overrides.d", "helpers", "aliases", name)
+	case "completion":
+		dst = filepath.Join(paths.SystemSeed(), "overrides.d", "helpers", "completions", name)
+	case "script":
+		srcNSDir := filepath.Dir(source)
+		nsEntry := filepath.Base(srcNSDir) // gives %<ns>
+		dst = filepath.Join(paths.SystemSeed(), "overrides.d", "installed", nsEntry, name)
+	}
 	if err := os.RemoveAll(dst); err != nil {
 		return fmt.Errorf("override remove: %w", err)
 	}
@@ -202,19 +261,6 @@ func parseOverrideRef(s string) (kind, name string, err error) {
 		return parts[0], parts[1], nil
 	}
 	return "", "", fmt.Errorf("override: unknown type %q (script|alias|completion)", parts[0])
-}
-
-func kindPlural(s string) string {
-	switch s {
-	case "script":
-		return "scripts"
-	case "alias":
-		return "aliases"
-	case "completion":
-		return "completions"
-	default:
-		return s
-	}
 }
 
 // requireRoot blocks the calling subcommand unless running as root, or
@@ -241,10 +287,10 @@ func findUserCopy(kind, name string) (string, error) {
 	case "completion":
 		candidate = paths.CompletionFile(home, name)
 	case "script":
-		// Search every namespace for the requested name.
-		matches, _ := filepath.Glob(filepath.Join(home, "scripts", "*", name))
+		// Search every %-prefixed namespace for the requested name.
+		matches, _ := filepath.Glob(filepath.Join(home, "installed", paths.ScriptPrefix+"*", name))
 		if len(matches) == 0 {
-			return "", fmt.Errorf("override add: no script %q under %s/scripts/", name, home)
+			return "", fmt.Errorf("override add: no script %q under %s/installed/", name, home)
 		}
 		if len(matches) > 1 {
 			return "", fmt.Errorf("override add: %q is ambiguous (%d namespaces have it); rename one first", name, len(matches))

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/alfred-intelligence/shy/internal/cache"
+	"github.com/alfred-intelligence/shy/internal/paths"
 )
 
 func writeManifest(t *testing.T, dir, body string) {
@@ -21,7 +22,7 @@ func writeManifest(t *testing.T, dir, body string) {
 
 func TestDiscoverSingleItemPlugin(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, "plugins", "alice", "gh-clone")
+	dir := paths.PluginDir(home, "alice", "gh-clone")
 	writeManifest(t, dir, `
 name = "gh-clone"
 version = "0.1.0"
@@ -53,7 +54,7 @@ repo = "alice/gh-clone"
 
 func TestDiscoverMultiItemPlugin(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, "plugins", "bob", "tools")
+	dir := paths.PluginDir(home, "bob", "tools")
 	writeManifest(t, dir, `
 name = "tools"
 version = "0.1.0"
@@ -87,7 +88,7 @@ path = "./do-y.sh"
 
 func TestRebuildAndLookup(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, "plugins", "alice", "gh-clone")
+	dir := paths.PluginDir(home, "alice", "gh-clone")
 	writeManifest(t, dir, `
 name = "gh-clone"
 version = "0.1.0"
@@ -112,7 +113,7 @@ entry = "./gh-clone.sh"
 
 func TestEnsureFreshSelfHeals(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, "plugins", "alice", "gh-clone")
+	dir := paths.PluginDir(home, "alice", "gh-clone")
 	writeManifest(t, dir, `
 name = "gh-clone"
 version = "0.1.0"

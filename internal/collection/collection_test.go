@@ -9,6 +9,7 @@ import (
 
 	"github.com/alfred-intelligence/shy/internal/cache"
 	"github.com/alfred-intelligence/shy/internal/install"
+	"github.com/alfred-intelligence/shy/internal/paths"
 )
 
 // buildLocalRepo creates a bare git repo at <root>/<name>.git with an
@@ -91,10 +92,10 @@ value = "ls -alh"
 	if len(res.Installed) < 2 {
 		t.Errorf("installed=%d, want ≥2", len(res.Installed))
 	}
-	if _, err := os.Stat(filepath.Join(home, "scripts", "alice", "git-autofetch", "git-autofetch.sh")); err != nil {
+	if _, err := os.Stat(filepath.Join(paths.ScriptDir(home, "alice", "git-autofetch"), "git-autofetch.sh")); err != nil {
 		t.Errorf("script missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(home, "aliases", "ll")); err != nil {
+	if _, err := os.Stat(paths.AliasFile(home, "ll")); err != nil {
 		t.Errorf("alias missing: %v", err)
 	}
 	if _, ok := c.Collections["alice-default"]; !ok {
@@ -120,10 +121,10 @@ value = "ls -alh"
 	if removed < 2 {
 		t.Errorf("removed=%d, want ≥2", removed)
 	}
-	if _, err := os.Stat(filepath.Join(home, "collections", "alice-default")); err == nil {
+	if _, err := os.Stat(paths.CollectionDir(home, "alice-default")); err == nil {
 		t.Error("collection clone still present after unsubscribe")
 	}
-	if _, err := os.Stat(filepath.Join(home, "aliases", "ll")); err == nil {
+	if _, err := os.Stat(paths.AliasFile(home, "ll")); err == nil {
 		t.Error("alias still present after unsubscribe")
 	}
 }

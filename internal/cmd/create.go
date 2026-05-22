@@ -46,7 +46,7 @@ func runCreate(out interface{ Write([]byte) (int, error) }, name string, noEdito
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create: mkdir: %w", err)
 	}
-	scriptPath := filepath.Join(dir, name+".sh")
+	scriptPath := filepath.Join(dir, paths.EntryPoint)
 	readmePath := filepath.Join(dir, "README.md")
 	scriptBody := fmt.Sprintf("#!/usr/bin/env bash\n# %s — sourced by shy at shell start.\n\n%s() {\n    echo \"OK from %s\"\n}\n", name, sanitiseFnName(name), name)
 	readmeBody := fmt.Sprintf("# %s\n\nA shy snippet. Replace this paragraph with a one- or two-sentence\nintroduction.\n\n## Usage\n\nDescribe how %s is invoked.\n", name, sanitiseFnName(name))
