@@ -38,22 +38,43 @@ func New() *cobra.Command {
 	// own that hosts both `add <tool>` and the per-shell emitters.
 	root.CompletionOptions.DisableDefaultCmd = true
 
-	root.AddCommand(
+	root.AddGroup(
+		&cobra.Group{ID: "daily", Title: "Commands:"},
+		&cobra.Group{ID: "advanced", Title: "Advanced commands:"},
+	)
+
+	dailyUse := []*cobra.Command{
 		newInitCmd(),
 		newInstallCmd(),
 		newListCmd(),
 		newInfoCmd(),
-		newRemoveCmd(),
-		newUpdateCmd(),
+		newCreateCmd(),
 		newAliasCmd(),
 		newCompletionCmd(),
 		newCollectionCmd(),
-		newCreateCmd(),
+		newUpdateCmd(),
+		newRemoveCmd(),
 		newPublishCmd(),
+	}
+	for _, c := range dailyUse {
+		c.GroupID = "daily"
+		root.AddCommand(c)
+	}
+
+	advanced := []*cobra.Command{
 		newOverrideCmd(),
 		newSystemResetCmd(),
-		newGenManCmd(),
-	)
+	}
+	for _, c := range advanced {
+		c.GroupID = "advanced"
+		root.AddCommand(c)
+	}
+
+	// gen-man is a plumbing command; hide it from the help listing.
+	genMan := newGenManCmd()
+	genMan.Hidden = true
+	root.AddCommand(genMan)
+
 	installPluginHelp(root)
 	return root
 }

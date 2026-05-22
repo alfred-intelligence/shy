@@ -75,7 +75,9 @@ if ! curl -fsSL "$sum_url" -o "$tmp/$asset.sha256"; then
     die "checksum download failed: $sum_url. The release may be incomplete; try a different version with SHY_VERSION=vX.Y.Z."
 fi
 
-if ! ( cd "$tmp" && sha256sum -c "$asset.sha256" >/dev/null 2>&1 ); then
+expected=$(tr -d '[:space:]' < "$tmp/$asset.sha256")
+actual=$(sha256sum "$tmp/$asset" | cut -d' ' -f1)
+if [[ "$expected" != "$actual" ]]; then
     die "SHA256 mismatch for $asset. The download is corrupted or has been tampered with — refusing to install."
 fi
 
@@ -86,7 +88,61 @@ tar -xzf "$tmp/$asset" -C "$tmp" shy
 install -m 0755 "$tmp/shy" "$PREFIX/bin/shy.new"
 mv -f "$PREFIX/bin/shy.new" "$PREFIX/bin/shy"
 
+# Symlink shy into a standard personal bin directory so it is reachable
+# without relying on init.bash being sourced (other shells, scripts, sudo -u).
+# Prefer ~/.local/bin (XDG), then ~/bin; create ~/.local/bin if neither exists.
+_shy_link_to_path() {
+    local target="$PREFIX/bin/shy"
+    local dir
+    for dir in "$HOME/.local/bin" "$HOME/bin"; do
+        if [[ -d "$dir" ]]; then
+            ln -sf "$target" "$dir/shy" 2>/dev/null && return 0
+        fi
+    done
+    if mkdir -p "$HOME/.local/bin" 2>/dev/null; then
+        ln -sf "$target" "$HOME/.local/bin/shy" 2>/dev/null || true
+    fi
+}
+_shy_link_to_path
+unset -f _shy_link_to_path
+
 "$PREFIX/bin/shy" init
+
+# Offer to set $EDITOR if the user doesn't already have one configured.
+_shy_detect_editor() {
+    [[ -n "${EDITOR:-}" ]] && return 0
+    local profile="$HOME/.profile"
+    local candidates=(nvim vim nano pico vi)
+    local found=()
+    local path
+    for ed in "${candidates[@]}"; do
+        path=$(command -v "$ed" 2>/dev/null) && found+=("$path")
+    done
+    [[ ${#found[@]} -eq 0 ]] && return 0
+    echo ""
+    echo "shy: \$EDITOR is not set. Which editor would you like to use?"
+    local i
+    for i in "${!found[@]}"; do
+        printf "  %d) %s\n" "$((i+1))" "${found[$i]}"
+    done
+    printf "  s) skip\n"
+    local choice
+    read -r -p "Choice [1-${#found[@]}/s]: " choice
+    case "$choice" in
+        s|S|"") return 0 ;;
+        *)
+            local idx
+            idx=$(( choice - 1 ))
+            if [[ $idx -ge 0 && $idx -lt ${#found[@]} ]]; then
+                local chosen="${found[$idx]}"
+                printf '\nexport EDITOR="%s"\n' "$chosen" >> "$profile"
+                echo "shy: wrote export EDITOR=\"$chosen\" to $profile"
+            fi
+            ;;
+    esac
+}
+_shy_detect_editor
+unset -f _shy_detect_editor
 
 echo "shy: $VERSION installed at $PREFIX/bin/shy"
 echo "shy: open a new shell or run \`source $PREFIX/init.bash\` to activate."

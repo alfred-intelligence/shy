@@ -74,7 +74,7 @@ func TestEndToEndAliasAndList(t *testing.T) {
 		t.Fatalf("init: %v", err)
 	}
 
-	if err := runAlias(&bytes.Buffer{}, `ll=ls -alh`); err != nil {
+	if err := runAlias(&bytes.Buffer{}, []string{"ll=ls", "-alh"}); err != nil {
 		t.Fatalf("alias: %v", err)
 	}
 
@@ -90,8 +90,15 @@ func TestEndToEndAliasAndList(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
 		t.Fatalf("decode json: %v\n%s", err, out.String())
 	}
-	if len(resp.Items) != 1 || resp.Items[0].Name != "ll" {
-		t.Errorf("unexpected items: %+v", resp.Items)
+	// init also registers the shy bash completion, so expect 2 items.
+	var aliasItem *struct{ Type, Name string }
+	for i := range resp.Items {
+		if resp.Items[i].Name == "ll" {
+			aliasItem = &resp.Items[i]
+		}
+	}
+	if aliasItem == nil {
+		t.Errorf("expected alias 'll' in items: %+v", resp.Items)
 	}
 
 	aliasContent, err := os.ReadFile(filepath.Join(home, "aliases", "ll"))

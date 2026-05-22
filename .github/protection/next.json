@@ -1,0 +1,32 @@
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": [
+      "go-test",
+      "go-lint",
+      "shell-lint",
+      "goreleaser-check",
+      "perf-bench/tab-completion",
+      "perf-bench/native-subcommand",
+      "perf-bench/plugin-dispatch",
+      "perf-bench/init-bash",
+      "acceptance/ubuntu-22.04",
+      "acceptance/ubuntu-24.04",
+      "acceptance/debian-12",
+      "acceptance/fedora-40",
+      "acceptance/macos"
+    ]
+  },
+  "enforce_admins": false,
+  "required_pull_request_reviews": {
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": false,
+    "required_approving_review_count": 0
+  },
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "required_conversation_resolution": true,
+  "lock_branch": false,
+  "allow_fork_syncing": false
+}
