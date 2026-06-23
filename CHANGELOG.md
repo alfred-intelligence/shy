@@ -5,6 +5,15 @@ All notable changes to shy are documented here. Entries follow
 file is maintained by [release-please](https://github.com/googleapis/release-please)
 from `next`.
 
+## [0.3.1](https://github.com/alfred-intelligence/shy/compare/v0.3.0...v0.3.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* **deps:** Bump golang.org/x/net to v0.56.0 (CVE fixes) ([0c6f29d](https://github.com/alfred-intelligence/shy/commit/0c6f29da3177d00aead3067fc092c25e77f586cd))
+* **deps:** Bump golang.org/x/net to v0.56.0 for CVE fixes ([baef6ed](https://github.com/alfred-intelligence/shy/commit/baef6edb4399fa97c0366558aeb7cb23eb66f613))
+* **init:** Sync embedded init.bash with canonical copy ([aa20196](https://github.com/alfred-intelligence/shy/commit/aa20196fa7c107438909e755b9675502daa518bb))
+
 ## [0.3.0](https://github.com/alfred-intelligence/shy/compare/v0.2.1...v0.3.0) (2026-06-22)
 
 
