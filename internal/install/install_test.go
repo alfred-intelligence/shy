@@ -4,6 +4,7 @@ package install
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alfred-intelligence/shy/internal/cache"
@@ -34,10 +35,17 @@ repo = "alice/git-autofetch"
 	if len(res.Installed) != 1 {
 		t.Fatalf("installed=%d", len(res.Installed))
 	}
-	want := filepath.Join(paths.ScriptDir(home, "alice", "git-autofetch"), "git-autofetch.sh")
+	// The entry is written under the fixed entry.sh name the runtime sources,
+	// NOT its original filename — that rename is the load-bearing contract.
+	want := filepath.Join(paths.ScriptDir(home, "alice", "git-autofetch"), paths.EntryPoint)
 	if _, err := os.Stat(want); err != nil {
-		t.Errorf("expected %s, got %v", want, err)
+		t.Errorf("expected entry at %s, got %v", want, err)
 	}
+	// The original-named file must NOT exist alongside it.
+	if _, err := os.Stat(filepath.Join(paths.ScriptDir(home, "alice", "git-autofetch"), "git-autofetch.sh")); err == nil {
+		t.Error("original-named entry should be renamed to entry.sh, not copied verbatim")
+	}
+	// _-prefixed helpers belong to this item and are preserved.
 	helperPath := filepath.Join(paths.ScriptDir(home, "alice", "git-autofetch"), "_helper.sh")
 	if _, err := os.Stat(helperPath); err != nil {
 		t.Errorf("expected helper at %s, got %v", helperPath, err)
@@ -107,6 +115,59 @@ la = "ls -A"
 	}
 	if _, err := os.Stat(paths.AliasFile(home, "la")); err != nil {
 		t.Errorf("alias la: %v", err)
+	}
+}
+
+// TestBundleSharedDirNoFanout guards the bug where multiple script items
+// share one collection dir (e.g. stdlib's scripts/): each item must get
+// ONLY its own entry as entry.sh — siblings must NOT fan out into it.
+func TestBundleSharedDirNoFanout(t *testing.T) {
+	src := t.TempDir()
+	home := t.TempDir()
+
+	mustWrite(t, filepath.Join(src, "manifest.toml"), `
+name = "tools"
+version = "1.0.0"
+
+[source]
+repo = "alice/tools"
+
+[[items]]
+name = "aa"
+type = "script"
+path = "./scripts/aa.sh"
+
+[[items]]
+name = "bb"
+type = "script"
+path = "./scripts/bb.sh"
+`)
+	mustWrite(t, filepath.Join(src, "scripts", "aa.sh"), "aa() { echo aa; }\n")
+	mustWrite(t, filepath.Join(src, "scripts", "bb.sh"), "bb() { echo bb; }\n")
+
+	c, _ := cache.Load(filepath.Join(home, "cache.json"))
+	if _, err := Bundle(src, Options{Home: home, Source: "alice/tools"}, c); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	for _, item := range []struct{ name, body string }{{"aa", "aa()"}, {"bb", "bb()"}} {
+		dir := paths.ScriptDir(home, "alice", item.name)
+		// Its own entry.sh exists with its own content.
+		got, err := os.ReadFile(filepath.Join(dir, paths.EntryPoint))
+		if err != nil {
+			t.Fatalf("%s entry.sh: %v", item.name, err)
+		}
+		if !strings.Contains(string(got), item.body) {
+			t.Errorf("%s entry.sh has wrong content: %q", item.name, got)
+		}
+		// The OTHER item's script must not have fanned in.
+		other := "bb.sh"
+		if item.name == "bb" {
+			other = "aa.sh"
+		}
+		if _, err := os.Stat(filepath.Join(dir, other)); err == nil {
+			t.Errorf("%s dir leaked sibling %s (fan-out bug)", item.name, other)
+		}
 	}
 }
 

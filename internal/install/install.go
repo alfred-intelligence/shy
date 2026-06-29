@@ -207,21 +207,28 @@ func installScriptOrPlugin(srcDir, home, namespace, name, kind, entry string, po
 		return nil, fmt.Errorf("install: entry %s: %w", srcEntry, err)
 	}
 
-	// Copy the entry script and any sibling .sh files plus README and
-	// manifest, preserving _-prefixed helpers.
+	// Write the entry script under the fixed entry.sh name the runtime
+	// sources. This rename is load-bearing: init.bash sources
+	// installed/%<ns>/<name>/entry.sh, never the original filename — so an
+	// item installed as mkcd.sh would never load. Preserve the exec bit.
 	entryDir := filepath.Dir(srcEntry)
-	if err := copyDirShallow(entryDir, destDir, policy); err != nil {
+	if err := copyEntryAs(srcEntry, filepath.Join(destDir, paths.EntryPoint), policy); err != nil {
 		return nil, err
 	}
-	// Always include the manifest at the destination so list/info works
-	// even when the entry lives in a subdirectory.
-	if entryDir != srcDir {
-		if err := copyFileIfExists(filepath.Join(srcDir, "manifest.toml"), filepath.Join(destDir, "manifest.toml"), policy); err != nil {
-			return nil, err
-		}
-		if err := copyFileIfExists(filepath.Join(srcDir, "README.md"), filepath.Join(destDir, "README.md"), policy); err != nil {
-			return nil, err
-		}
+	// Copy only this item's own _-prefixed helper scripts from the entry
+	// dir. Non-helper siblings are OTHER items' entries when several items
+	// share one collection dir (e.g. stdlib's scripts/); copying them would
+	// fan every script into every item's directory.
+	if err := copyHelpers(entryDir, destDir, policy); err != nil {
+		return nil, err
+	}
+	// Always include the manifest + README at the destination so list/info
+	// works regardless of where the entry lives.
+	if err := copyFileIfExists(filepath.Join(srcDir, "manifest.toml"), filepath.Join(destDir, "manifest.toml"), policy); err != nil {
+		return nil, err
+	}
+	if err := copyFileIfExists(filepath.Join(srcDir, "README.md"), filepath.Join(destDir, "README.md"), policy); err != nil {
+		return nil, err
 	}
 	return &cache.Installed{
 		Type:      kind,
@@ -321,7 +328,29 @@ func copyFileIfExists(src, dst string, policy ConflictPolicy) error {
 	return writeWithPolicy(dst, data, 0o644, policy)
 }
 
-func copyDirShallow(src, dst string, policy ConflictPolicy) error {
+// copyEntryAs copies a single entry script to dst, preserving its
+// executable bit so the runtime can source (or exec) it.
+func copyEntryAs(src, dst string, policy ConflictPolicy) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("install: stat %s: %w", src, err)
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("install: read %s: %w", src, err)
+	}
+	mode := os.FileMode(0o644)
+	if info.Mode()&0o111 != 0 {
+		mode = 0o755
+	}
+	return writeWithPolicy(dst, data, mode, policy)
+}
+
+// copyHelpers copies only _-prefixed .sh helper files from src into dst.
+// These belong to the item whose entry shares the directory; other
+// (non-_) siblings are separate items and are intentionally skipped so a
+// shared collection dir does not fan out into every item.
+func copyHelpers(src, dst string, policy ConflictPolicy) error {
 	entries, err := os.ReadDir(src)
 	if err != nil {
 		return fmt.Errorf("install: readdir %s: %w", src, err)
@@ -330,22 +359,24 @@ func copyDirShallow(src, dst string, policy ConflictPolicy) error {
 		if e.IsDir() {
 			continue
 		}
-		srcPath := filepath.Join(src, e.Name())
+		name := e.Name()
+		if !strings.HasPrefix(name, "_") || !strings.HasSuffix(name, ".sh") {
+			continue
+		}
+		srcPath := filepath.Join(src, name)
 		info, err := os.Stat(srcPath)
 		if err != nil {
 			return fmt.Errorf("install: stat %s: %w", srcPath, err)
 		}
 		data, err := os.ReadFile(srcPath)
 		if err != nil {
-			return fmt.Errorf("install: read %s: %w", e.Name(), err)
+			return fmt.Errorf("install: read %s: %w", name, err)
 		}
-		// Preserve the executable bit when copying scripts so plugin
-		// entry scripts can be exec'd; data files keep 0o644.
 		mode := os.FileMode(0o644)
 		if info.Mode()&0o111 != 0 {
 			mode = 0o755
 		}
-		if err := writeWithPolicy(filepath.Join(dst, e.Name()), data, mode, policy); err != nil {
+		if err := writeWithPolicy(filepath.Join(dst, name), data, mode, policy); err != nil {
 			return err
 		}
 	}
