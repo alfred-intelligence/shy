@@ -92,8 +92,8 @@ value = "ls -alh"
 	if len(res.Installed) < 2 {
 		t.Errorf("installed=%d, want ≥2", len(res.Installed))
 	}
-	if _, err := os.Stat(filepath.Join(paths.ScriptDir(home, "alice", "git-autofetch"), "git-autofetch.sh")); err != nil {
-		t.Errorf("script missing: %v", err)
+	if _, err := os.Stat(filepath.Join(paths.ScriptDir(home, "alice", "git-autofetch"), paths.EntryPoint)); err != nil {
+		t.Errorf("script entry missing: %v", err)
 	}
 	if _, err := os.Stat(paths.AliasFile(home, "ll")); err != nil {
 		t.Errorf("alias missing: %v", err)
