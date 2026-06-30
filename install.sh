@@ -25,6 +25,37 @@ cleanup() {
     rm -f "$LOCKFILE" 2>/dev/null || true
 }
 
+# ---------------------------------------------------------------------------
+# ground0 mode — pure-bash on-ramp; NO binary download, NO Go required.
+# Usage: bash install.sh ground0
+# Lays down init.bash + bin/shy (from ground0/) + stdlib seed and wires
+# ~/.bashrc. Existing install.sh behaviour is completely unchanged.
+# ---------------------------------------------------------------------------
+if [[ "${1:-}" == "ground0" ]]; then
+    _g0_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    _g0_shy="${_g0_script_dir}/ground0/shy"
+    _g0_stdlib="${_g0_script_dir}/examples/stdlib"
+
+    if [[ ! -x "$_g0_shy" ]]; then
+        die "ground0/shy not found or not executable at $_g0_shy — is the repo present?"
+    fi
+
+    echo "shy: ground0 mode — bash-only install (no Go binary)"
+
+    # Run ground0/shy init: creates $SHY_HOME tree, copies init.bash, wires ~/.bashrc
+    bash "$_g0_shy" init
+
+    # Seed with stdlib if available alongside install.sh (repo checkout / tarball)
+    if [[ -d "$_g0_stdlib" ]]; then
+        echo "shy: seeding stdlib from $_g0_stdlib"
+        SHY_HOME="$PREFIX" bash "$_g0_shy" install "$_g0_stdlib" >/dev/null
+        echo "shy: stdlib installed"
+    fi
+
+    echo "shy: ground0 install complete — open a new shell or: source $PREFIX/init.bash"
+    exit 0
+fi
+
 # Refuse to run as root; system-wide installs use the .deb/.rpm packages.
 if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
     die "refusing to install as root. Use the .deb or .rpm package for system-wide installs, or rerun as your normal user."
