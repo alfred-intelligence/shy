@@ -9,33 +9,24 @@ permissions:
   contents: read
 
 jobs:
-  go:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - run: go vet ./...
-      - run: go test -race ./...
-
-  shell:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          sudo apt-get update
-          sudo apt-get install -y shellcheck
-      - run: shellcheck install.sh init/init.bash
+  # Call the shared go-bash-ci reusable workflow from alfred-intelligence.
+  # This replaces the local go + shell jobs with a single caller that produces
+  # the required check contexts: ci / go-test, ci / go-lint, ci / shell-lint.
+  # TODO: flip to @main (or a version tag) once .github-workflows PR #2 merges.
+  ci:
+    uses: alfred-intelligence/.github-workflows/.github/workflows/go-bash-ci.yml@feat/reusable-go-bash-ci
+    with:
+      go-version-file: go.mod
+      shellcheck-paths: install.sh init/init.bash
 
   goreleaser-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         with:
           version: latest
           args: check
@@ -43,8 +34,8 @@ jobs:
   plugin-dispatch-perf:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - run: go build -o dist/shy ./cmd
