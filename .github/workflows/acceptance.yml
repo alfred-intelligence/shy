@@ -11,6 +11,8 @@ permissions:
   contents: read
 
 jobs:
+  # Matrix check names are overridden by `name:` so branch protection requires
+  # "ubuntu-22.04", "ubuntu-24.04", "debian-12", "fedora-40" (no job-key prefix).
   containers:
     name: ${{ matrix.label }}
     runs-on: ubuntu-latest
@@ -27,8 +29,8 @@ jobs:
           - label: fedora-40
             image: fedora:40
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
       - name: Build shy
@@ -37,10 +39,12 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
             go build -o dist/shy ./cmd
       - name: Run acceptance inside ${{ matrix.label }}
+        env:
+          MATRIX_IMAGE: ${{ matrix.image }}
         run: |
           docker run --rm \
             -v "$PWD:/src" -w /src \
-            ${{ matrix.image }} bash -c '
+            "$MATRIX_IMAGE" bash -c '
               set -euo pipefail
               if command -v apt-get >/dev/null 2>&1; then
                 apt-get update -qq
@@ -58,11 +62,12 @@ jobs:
               "
             '
 
+  # Emitted context: "macos".
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
       - run: go build -o dist/shy ./cmd

@@ -92,16 +92,15 @@ func parseManifest(dir, namespace, name string) ([]Entry, error) {
 	}
 	out := []Entry{}
 	// Single-item form: top-level type=plugin + command + entry.
+	// Always resolve to paths.EntryPoint — install always copies the source
+	// entry under that fixed name, so m.Entry (the source filename) is never
+	// present on disk after installation.
 	if m.Type == "plugin" && m.Command != "" {
-		entry := m.Entry
-		if entry == "" {
-			entry = "./" + paths.EntryPoint
-		}
 		out = append(out, Entry{
 			Command:     m.Command,
 			Namespace:   namespace,
 			Name:        name,
-			EntryScript: filepath.Join(dir, entry),
+			EntryScript: filepath.Join(dir, paths.EntryPoint),
 			Description: m.Description,
 		})
 	}
@@ -110,15 +109,11 @@ func parseManifest(dir, namespace, name string) ([]Entry, error) {
 		if it.Type != "plugin" || it.Command == "" {
 			continue
 		}
-		entry := it.Path
-		if entry == "" {
-			entry = "./" + paths.EntryPoint
-		}
 		out = append(out, Entry{
 			Command:     it.Command,
 			Namespace:   namespace,
 			Name:        it.Name,
-			EntryScript: filepath.Join(dir, entry),
+			EntryScript: filepath.Join(dir, paths.EntryPoint),
 			Description: it.Description,
 		})
 	}
