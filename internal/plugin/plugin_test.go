@@ -4,6 +4,7 @@ package plugin
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alfred-intelligence/shy/internal/cache"
@@ -108,6 +109,50 @@ entry = "./gh-clone.sh"
 	}
 	if _, ok := Lookup(c, "nonexistent"); ok {
 		t.Error("Lookup matched a nonexistent command")
+	}
+}
+
+// TestDispatchResolvesEntryPoint verifies that Discover always builds
+// EntryScript from paths.EntryPoint, never from the manifest's original
+// entry/path filename. This is the regression test for the acceptance
+// failure: "fork/exec .../hello-world.sh: no such file or directory".
+// Install copies the source entry to entry.sh and the original name is
+// absent on disk; dispatching via the manifest filename breaks every plugin.
+func TestDispatchResolvesEntryPoint(t *testing.T) {
+	home := t.TempDir()
+	dir := paths.PluginDir(home, "alfred-intelligence", "hello-world")
+	writeManifest(t, dir, `
+name = "hello-world"
+version = "0.1.0"
+type = "plugin"
+command = "hello-world"
+entry = "./hello-world.sh"
+
+[source]
+repo = "alfred-intelligence/hello-world"
+`)
+	// Only entry.sh exists — that is what install writes.
+	if err := os.WriteFile(filepath.Join(dir, paths.EntryPoint), []byte("#!/usr/bin/env bash\necho hello\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := Discover(home)
+	if err != nil {
+		t.Fatalf("discover: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries=%d, want 1", len(entries))
+	}
+	got := entries[0]
+	if !strings.HasSuffix(got.EntryScript, "/"+paths.EntryPoint) {
+		t.Errorf("EntryScript=%q must end with /%s", got.EntryScript, paths.EntryPoint)
+	}
+	if strings.Contains(got.EntryScript, "hello-world.sh") {
+		t.Errorf("EntryScript=%q must not reference original filename hello-world.sh", got.EntryScript)
+	}
+	// Verify the resolved path is actually accessible on disk.
+	if _, err := os.Stat(got.EntryScript); err != nil {
+		t.Errorf("EntryScript %q not accessible: %v", got.EntryScript, err)
 	}
 }
 
