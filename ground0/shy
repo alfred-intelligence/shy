@@ -1,0 +1,611 @@
+#!/usr/bin/env bash
+# ground0/shy — pure-bash reimplementation of shy management verbs.
+# Dependency contract: bash >=4, git, coreutils.  NO Go, NO jq, NO python.
+# Writes the exact on-disk tree the Go shy runtime (init.bash) reads.
+# SPDX-License-Identifier: MPL-2.0
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Bootstrap
+# ---------------------------------------------------------------------------
+
+# Directory containing this script (used to locate sibling assets)
+_G0_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Resolve SHY_HOME, defaulting to ~/.shy
+_g0_home() {
+    if [[ -n "${SHY_HOME:-}" ]]; then
+        printf '%s' "$SHY_HOME"
+    else
+        printf '%s/.shy' "${HOME}"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Filesystem constants (mirrors paths.go)
+# ---------------------------------------------------------------------------
+
+_SCRIPT_PREFIX="%"
+_ENTRY_POINT="entry.sh"
+# Substring shy init uses to detect an existing bashrc integration line
+_BASHRC_MARKER='shy/init.bash'
+# The literal line written to ~/.bashrc (single quotes intentional: not expanded here)
+# shellcheck disable=SC2016
+_BASHRC_SOURCE_LINE='[ -f "$HOME/.shy/init.bash" ] && source "$HOME/.shy/init.bash"'
+
+# ---------------------------------------------------------------------------
+# SafeName — mirrors paths.SafeName
+# ---------------------------------------------------------------------------
+
+_g0_safe_name() {
+    local s="${1:-}"
+    # lowercase
+    s="${s,,}"
+    # strip .local suffix (idempotent)
+    s="${s%.local}"
+    # replace runs of characters outside [a-z0-9-] with a single -
+    s="$(printf '%s' "$s" | sed 's/[^a-z0-9-]\+/-/g')"
+    # trim leading and trailing dashes
+    s="${s##-}"; s="${s%%-}"
+    # fallback when result is empty
+    [[ -z "$s" ]] && s="local"
+    printf '%s' "$s"
+}
+
+# NamespaceFromRepo — mirrors paths.NamespaceFromRepo
+_g0_namespace_from_repo() {
+    local repo="${1:-}"
+    local owner="${repo%%/*}"   # everything before the first /
+    _g0_safe_name "$owner"
+}
+
+# HostNamespace — mirrors paths.HostNamespace
+_g0_host_namespace() {
+    local h
+    h="$(hostname 2>/dev/null || printf 'localhost')"
+    _g0_safe_name "${h%.local}"
+}
+
+# ---------------------------------------------------------------------------
+# shellQuote — mirrors install.shellQuote
+# Wraps value in single quotes, escaping embedded single quotes as '\''
+# ---------------------------------------------------------------------------
+
+_g0_shell_quote() {
+    local s="${1:-}"
+    s="${s//"'"/"'\\'''"}"
+    printf "'%s'" "$s"
+}
+
+# ---------------------------------------------------------------------------
+# File-copy helpers
+# All copies go through cp so trailing newlines are preserved byte-for-byte.
+# ---------------------------------------------------------------------------
+
+# Copy src to dst; skip if already identical; create parent dirs.
+_g0_cp_idempotent() {
+    local src="$1" dst="$2"
+    mkdir -p "$(dirname "$dst")"
+    if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+        return 0
+    fi
+    cp -f "$src" "$dst"
+}
+
+# Copy src to dst/entry.sh, preserving the executable bit.
+# Mirrors install.copyEntryAs.
+_g0_copy_entry_as() {
+    local src="$1" dst_dir="$2"
+    local dst="${dst_dir}/${_ENTRY_POINT}"
+    mkdir -p "$dst_dir"
+    if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+        return 0
+    fi
+    cp -f "$src" "$dst"
+    # Default to non-executable unless source has exec bit
+    if [[ ! -x "$src" ]]; then
+        chmod 0644 "$dst"
+    fi
+}
+
+# Copy only _-prefixed .sh helpers from src_dir into dst_dir.
+# Mirrors install.copyHelpers.
+_g0_copy_helpers() {
+    local src_dir="$1" dst_dir="$2"
+    local f dst
+    for f in "$src_dir"/_*.sh; do
+        [[ -f "$f" ]] || continue
+        dst="${dst_dir}/$(basename "$f")"
+        if [[ -f "$dst" ]] && cmp -s "$f" "$dst"; then
+            continue
+        fi
+        mkdir -p "$dst_dir"
+        cp -f "$f" "$dst"
+        if [[ ! -x "$f" ]]; then
+            chmod 0644 "$dst"
+        fi
+    done
+}
+
+# Copy src to dst only if src exists.
+# Mirrors install.copyFileIfExists.
+_g0_copy_file_if_exists() {
+    local src="$1" dst="$2"
+    [[ -f "$src" ]] || return 0
+    _g0_cp_idempotent "$src" "$dst"
+}
+
+# ---------------------------------------------------------------------------
+# Purpose-built manifest.toml parser (v1 schema only — NOT a general parser)
+# Populates global variables after call:
+#   _M_NAME  _M_VERSION  _M_DESC  _M_LICENSE  _M_SOURCE_REPO
+#   _M_ITEMS_NAMES[]  _M_ITEMS_TYPES[]  _M_ITEMS_PATHS[]  _M_ITEMS_VALUES[]
+#   _M_ALIAS_NAMES[]  _M_ALIAS_VALUES[]
+# ---------------------------------------------------------------------------
+
+_g0_unquote() {
+    local v="$1"
+    # strip leading and trailing ASCII whitespace
+    v="${v#"${v%%[!$' \t']*}"}"
+    v="${v%"${v##*[!$' \t']}"}"
+    # strip surrounding double or single quotes
+    if [[ "$v" == '"'*'"' ]]; then
+        v="${v:1:${#v}-2}"
+    elif [[ "$v" == "'"*"'" ]]; then
+        v="${v:1:${#v}-2}"
+    fi
+    printf '%s' "$v"
+}
+
+_g0_parse_manifest() {
+    local file="$1"
+
+    # Reset all output globals
+    _M_NAME="" _M_VERSION="" _M_DESC="" _M_LICENSE="" _M_SOURCE_REPO=""
+    _M_ITEMS_NAMES=(); _M_ITEMS_TYPES=(); _M_ITEMS_PATHS=(); _M_ITEMS_VALUES=()
+    _M_ALIAS_NAMES=(); _M_ALIAS_VALUES=()
+
+    local section="" in_item=0
+    local item_name="" item_type="" item_path="" item_value=""
+
+    # Flush a completed [[items]] block
+    _g0_flush_item() {
+        if [[ $in_item -eq 1 && -n "$item_name" ]]; then
+            _M_ITEMS_NAMES+=("$item_name")
+            _M_ITEMS_TYPES+=("${item_type:-script}")
+            _M_ITEMS_PATHS+=("${item_path:-}")
+            _M_ITEMS_VALUES+=("${item_value:-}")
+        fi
+        item_name="" item_type="" item_path="" item_value="" in_item=0
+    }
+
+    local raw_line line key val
+    while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
+        # strip inline comments and trailing whitespace
+        line="${raw_line%%#*}"
+        line="${line%"${line##*[! ]}"}"
+        [[ -z "$line" ]] && continue
+
+        # --- Section headers ---
+        if [[ "$line" == "[[items]]" ]]; then
+            _g0_flush_item; in_item=1; section="items"; continue
+        fi
+        if [[ "$line" == "[source]" ]]; then
+            _g0_flush_item; section="source"; continue
+        fi
+        if [[ "$line" == "[aliases]" ]]; then
+            _g0_flush_item; section="aliases"; continue
+        fi
+        if [[ "$line" == "[requires]" || "$line" == "[[completions]]" ]]; then
+            _g0_flush_item; section="ignore"; continue
+        fi
+        # Any other [section] header — ignore
+        if [[ "$line" == "["* && "$line" == *"]" ]]; then
+            _g0_flush_item; section="ignore"; continue
+        fi
+
+        # --- key = value lines ---
+        [[ "$line" != *"="* ]] && continue
+        key="${line%%=*}"
+        val="${line#*=}"
+        # trim key whitespace
+        key="${key#"${key%%[! ]*}"}"; key="${key%"${key##*[! ]}"}"
+        val="$(_g0_unquote "$val")"
+
+        case "$section" in
+            "")
+                case "$key" in
+                    name)        _M_NAME="$val" ;;
+                    version)     _M_VERSION="$val" ;;
+                    description) _M_DESC="$val" ;;
+                    license)     _M_LICENSE="$val" ;;
+                esac ;;
+            source)
+                [[ "$key" == "repo" ]] && _M_SOURCE_REPO="$val" ;;
+            items)
+                case "$key" in
+                    name)  item_name="$val" ;;
+                    type)  item_type="$val" ;;
+                    path)  item_path="$val" ;;
+                    value) item_value="$val" ;;
+                esac ;;
+            aliases)
+                _M_ALIAS_NAMES+=("$key")
+                _M_ALIAS_VALUES+=("$val") ;;
+            ignore) ;;
+        esac
+    done < "$file"
+
+    _g0_flush_item
+    unset -f _g0_flush_item
+}
+
+# ---------------------------------------------------------------------------
+# Install one script or plugin item.
+# Mirrors install.installScriptOrPlugin.
+# ---------------------------------------------------------------------------
+
+_g0_install_script() {
+    local src_dir="$1" home="$2" namespace="$3" name="$4" entry_rel="$5"
+
+    # Resolve entry source, stripping leading ./
+    entry_rel="${entry_rel#./}"
+    local src_entry="${src_dir}/${entry_rel}"
+    if [[ ! -f "$src_entry" ]]; then
+        printf 'ground0: error: entry not found: %s\n' "$src_entry" >&2
+        return 1
+    fi
+
+    local dest_dir="${home}/installed/${_SCRIPT_PREFIX}${namespace}/${name}"
+    mkdir -p "$dest_dir"
+
+    # Write entry under fixed name entry.sh (load-bearing rename mirrors Go)
+    _g0_copy_entry_as "$src_entry" "$dest_dir"
+
+    # Copy only _-prefixed .sh helpers from the entry's directory
+    _g0_copy_helpers "$(dirname "$src_entry")" "$dest_dir"
+
+    # Always include manifest.toml and README.md at destination
+    _g0_copy_file_if_exists "${src_dir}/manifest.toml" "${dest_dir}/manifest.toml"
+    _g0_copy_file_if_exists "${src_dir}/README.md"     "${dest_dir}/README.md"
+}
+
+# ---------------------------------------------------------------------------
+# Install one alias.
+# Mirrors install.installAlias — produces alias <name>=<shell-quoted-value>\n
+# ---------------------------------------------------------------------------
+
+_g0_install_alias() {
+    local home="$1" name="$2" value="$3"
+    local dst="${home}/helpers/aliases/${name}"
+    mkdir -p "${home}/helpers/aliases"
+    printf 'alias %s=%s\n' "$name" "$(_g0_shell_quote "$value")" > "$dst"
+    chmod 0644 "$dst"
+}
+
+# ===========================================================================
+# Verb: init
+# Creates $SHY_HOME directory tree, writes init.bash, wires ~/.bashrc,
+# and writes the bash completion for shy (static cobra capture).
+# ===========================================================================
+
+g0_cmd_init() {
+    local home
+    home="$(_g0_home)"
+
+    # Root directory with restrictive permissions (mirrors Go's 0700 on home)
+    mkdir -p "$home"
+    chmod 0700 "$home"
+
+    # Subdirectories (mirrors paths.Subdirs)
+    local subdir
+    for subdir in \
+        "${home}/bin" \
+        "${home}/installed" \
+        "${home}/helpers/aliases" \
+        "${home}/helpers/completions" \
+        "${home}/overrides.d/installed" \
+        "${home}/overrides.d/helpers/aliases" \
+        "${home}/overrides.d/helpers/completions"
+    do
+        # mkdir -p -m only applies the mode to the deepest dir; apply chmod explicitly
+        mkdir -p "$subdir"
+        chmod 0755 "$subdir"
+    done
+
+    # Write init.bash verbatim from repo's init/init.bash
+    local init_dst="${home}/init.bash"
+    local init_src="${_G0_DIR}/../init/init.bash"
+    if [[ ! -f "$init_dst" ]]; then
+        if [[ -f "$init_src" ]]; then
+            cp "$init_src" "$init_dst"
+            chmod 0644 "$init_dst"
+        else
+            printf 'ground0: warning: init.bash not found at %s\n' "$init_src" >&2
+        fi
+    fi
+
+    # Wire ~/.bashrc (idempotent via marker substring)
+    local bashrc="${SHY_TEST_BASHRC:-${HOME}/.bashrc}"
+    if [[ -f "$bashrc" ]]; then
+        if ! grep -qF "$_BASHRC_MARKER" "$bashrc" 2>/dev/null; then
+            # SC2016: single quotes intentional — $HOME must expand at shell-start, not now
+            # shellcheck disable=SC2016
+            printf '\n# shy — added by `shy init`\n%s\n' "$_BASHRC_SOURCE_LINE" >> "$bashrc"
+        fi
+    else
+        # shellcheck disable=SC2016
+        printf '# shy — added by `shy init`\n%s\n' "$_BASHRC_SOURCE_LINE" > "$bashrc"
+    fi
+
+    # Write the shy bash completion (static cobra capture in completion.bash)
+    local comp_dst="${home}/helpers/completions/shy"
+    if [[ ! -f "$comp_dst" ]]; then
+        local comp_src="${_G0_DIR}/completion.bash"
+        if [[ -f "$comp_src" ]]; then
+            cp "$comp_src" "$comp_dst"
+            chmod 0644 "$comp_dst"
+        else
+            printf 'ground0: warning: completion.bash not found at %s\n' "$comp_src" >&2
+        fi
+    fi
+
+    printf 'ground0 shy init: setup complete.\n'
+    printf '  home: %s\n' "$home"
+    printf '  run: source ~/.bashrc (or open a new shell) to activate.\n'
+}
+
+# ===========================================================================
+# Verb: install <dir>
+# Reads dir/manifest.toml and materialises items into the $SHY_HOME tree.
+# ===========================================================================
+
+g0_cmd_install() {
+    local src_dir="${1:-}"
+    if [[ -z "$src_dir" ]]; then
+        printf 'ground0: install: usage: shy install <dir>\n' >&2; return 1
+    fi
+    if [[ ! -d "$src_dir" ]]; then
+        printf 'ground0: install: not a directory: %s\n' "$src_dir" >&2; return 1
+    fi
+    local manifest="${src_dir}/manifest.toml"
+    if [[ ! -f "$manifest" ]]; then
+        printf 'ground0: install: no manifest.toml in %s\n' "$src_dir" >&2; return 1
+    fi
+
+    local home
+    home="$(_g0_home)"
+
+    _g0_parse_manifest "$manifest"
+
+    # Namespace: from [source] repo or host
+    local namespace
+    if [[ -n "$_M_SOURCE_REPO" ]]; then
+        namespace="$(_g0_namespace_from_repo "$_M_SOURCE_REPO")"
+    else
+        namespace="$(_g0_host_namespace)"
+    fi
+
+    local i count=0
+
+    # Install [[items]]
+    for i in "${!_M_ITEMS_NAMES[@]}"; do
+        local iname="${_M_ITEMS_NAMES[$i]}"
+        local itype="${_M_ITEMS_TYPES[$i]}"
+        local ipath="${_M_ITEMS_PATHS[$i]}"
+        local ivalue="${_M_ITEMS_VALUES[$i]}"
+
+        case "$itype" in
+            script|"")
+                _g0_install_script "$src_dir" "$home" "$namespace" "$iname" "$ipath"
+                printf '  installed script %s/%s\n' "$namespace" "$iname"
+                count=$((count + 1))
+                ;;
+            plugin)
+                _g0_install_script "$src_dir" "$home" "$namespace" "$iname" "$ipath"
+                printf '  installed plugin %s/%s\n' "$namespace" "$iname"
+                count=$((count + 1))
+                ;;
+            alias)
+                _g0_install_alias "$home" "$iname" "$ivalue"
+                printf '  installed alias  %s\n' "$iname"
+                count=$((count + 1))
+                ;;
+            *)
+                printf 'ground0: install: unknown item type %q — skipping\n' "$itype" >&2 ;;
+        esac
+    done
+
+    # Install top-level [aliases] table
+    for i in "${!_M_ALIAS_NAMES[@]}"; do
+        _g0_install_alias "$home" "${_M_ALIAS_NAMES[$i]}" "${_M_ALIAS_VALUES[$i]}"
+        printf '  installed alias  %s\n' "${_M_ALIAS_NAMES[$i]}"
+        count=$((count + 1))
+    done
+
+    printf 'ground0 shy install: %d item(s) installed from %s\n' "$count" "$src_dir"
+}
+
+# ===========================================================================
+# Verb: list
+# Lists installed items by scanning the filesystem (mirrors Go runtime).
+# ===========================================================================
+
+g0_cmd_list() {
+    local home
+    home="$(_g0_home)"
+    local found=0
+
+    # Scripts: installed/%<ns>/<name>/entry.sh
+    if [[ -d "${home}/installed" ]]; then
+        local ns_dir item_dir ns_name item_name
+        for ns_dir in "${home}/installed/${_SCRIPT_PREFIX}"*/; do
+            [[ -d "$ns_dir" ]] || continue
+            ns_name="$(basename "$ns_dir")"
+            ns_name="${ns_name#"${_SCRIPT_PREFIX}"}"
+            for item_dir in "$ns_dir"*/; do
+                [[ -d "$item_dir" ]] || continue
+                [[ -f "${item_dir}${_ENTRY_POINT}" ]] || continue
+                item_name="$(basename "$item_dir")"
+                printf 'script\t%s/%s\n' "$ns_name" "$item_name"
+                found=$((found + 1))
+            done
+        done
+    fi
+
+    # Aliases: helpers/aliases/*
+    local af
+    for af in "${home}/helpers/aliases/"*; do
+        [[ -f "$af" ]] || continue
+        printf 'alias\t%s\n' "$(basename "$af")"
+        found=$((found + 1))
+    done
+
+    # Completions: helpers/completions/*
+    local cf
+    for cf in "${home}/helpers/completions/"*; do
+        [[ -f "$cf" ]] || continue
+        printf 'completion\t%s\n' "$(basename "$cf")"
+        found=$((found + 1))
+    done
+
+    if [[ $found -eq 0 ]]; then
+        printf '(no items installed)\n'
+    fi
+}
+
+# ===========================================================================
+# Verb: info <name>
+# Shows metadata for one installed item by name.
+# ===========================================================================
+
+g0_cmd_info() {
+    local name="${1:-}"
+    if [[ -z "$name" ]]; then
+        printf 'ground0: info: usage: shy info <name>\n' >&2; return 1
+    fi
+    local home
+    home="$(_g0_home)"
+
+    # Search installed/%*/<name>/manifest.toml
+    if [[ -d "${home}/installed" ]]; then
+        local ns_dir item_dir mf
+        for ns_dir in "${home}/installed/${_SCRIPT_PREFIX}"*/; do
+            [[ -d "$ns_dir" ]] || continue
+            item_dir="${ns_dir}${name}"
+            mf="${item_dir}/manifest.toml"
+            if [[ -f "$mf" ]]; then
+                cat "$mf"
+                return 0
+            fi
+        done
+    fi
+    printf 'ground0: info: %s: not found\n' "$name" >&2
+    return 1
+}
+
+# ===========================================================================
+# Verb: reload
+# Prints the command to re-source init.bash; cannot source from a subshell.
+# ===========================================================================
+
+g0_cmd_reload() {
+    local home
+    home="$(_g0_home)"
+    printf 'source "%s/init.bash"\n' "$home"
+    printf '# Run the line above in your current shell to reload shy.\n'
+}
+
+# ===========================================================================
+# Verb: remove <name>
+# Removes an installed item (script dir, alias file, or completion file).
+# ===========================================================================
+
+g0_cmd_remove() {
+    local name="${1:-}"
+    if [[ -z "$name" ]]; then
+        printf 'ground0: remove: usage: shy remove <name>\n' >&2; return 1
+    fi
+    local home
+    home="$(_g0_home)"
+    local removed=0
+
+    # Scripts: installed/%*/<name>/
+    if [[ -d "${home}/installed" ]]; then
+        local ns_dir item_dir
+        for ns_dir in "${home}/installed/${_SCRIPT_PREFIX}"*/; do
+            [[ -d "$ns_dir" ]] || continue
+            item_dir="${ns_dir}${name}"
+            if [[ -d "$item_dir" ]]; then
+                rm -rf "$item_dir"
+                printf 'ground0: removed script %s\n' "$name"
+                removed=$((removed + 1))
+            fi
+        done
+    fi
+
+    # Alias file
+    local af="${home}/helpers/aliases/${name}"
+    if [[ -f "$af" ]]; then
+        rm -f "$af"
+        printf 'ground0: removed alias %s\n' "$name"
+        removed=$((removed + 1))
+    fi
+
+    # Completion file
+    local cf="${home}/helpers/completions/${name}"
+    if [[ -f "$cf" ]]; then
+        rm -f "$cf"
+        printf 'ground0: removed completion %s\n' "$name"
+        removed=$((removed + 1))
+    fi
+
+    if [[ $removed -eq 0 ]]; then
+        printf 'ground0: remove: %s: not found\n' "$name" >&2; return 1
+    fi
+}
+
+# ===========================================================================
+# Main dispatcher
+# ===========================================================================
+
+_g0_usage() {
+    cat >&2 <<'USAGE'
+ground0/shy — pure-bash shy management layer
+
+Usage: shy <verb> [args]
+
+Verbs:
+  init                  Create $SHY_HOME layout, wire ~/.bashrc
+  install <dir>         Install items from dir/manifest.toml
+  list                  List installed items
+  info <name>           Show metadata for an installed item
+  reload                Print the command to reload shy in current shell
+  remove <name>         Remove an installed item
+
+Environment:
+  SHY_HOME              Override default ~/.shy location (default: ~/.shy)
+  SHY_TEST_BASHRC       Override ~/.bashrc path (for tests/CI)
+USAGE
+}
+
+main() {
+    local verb="${1:-}"
+    shift || true
+
+    case "$verb" in
+        init)                g0_cmd_init ;;
+        install)             g0_cmd_install "${@}" ;;
+        list)                g0_cmd_list ;;
+        info)                g0_cmd_info "${@}" ;;
+        reload)              g0_cmd_reload ;;
+        remove|rm|uninstall) g0_cmd_remove "${@}" ;;
+        ""|--help|-h)        _g0_usage; exit 0 ;;
+        *)
+            printf 'ground0: unknown verb: %s\n' "$verb" >&2
+            _g0_usage; exit 1 ;;
+    esac
+}
+
+main "$@"
