@@ -113,6 +113,34 @@ func TestEndToEndAliasAndList(t *testing.T) {
 	}
 }
 
+// TestInitWritesCanonicalInitBash asserts that shy init writes an init.bash
+// that sources the runtime layout (installed/%<ns>/<name>/entry.sh and
+// helpers/aliases), not the stale scripts/ layout from before the
+// entry.sh rename.
+func TestInitWritesCanonicalInitBash(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("SHY_HOME", home)
+	t.Setenv("SHY_TEST_BASHRC", filepath.Join(t.TempDir(), ".bashrc"))
+
+	if err := runInit(&bytes.Buffer{}); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(home, "init.bash"))
+	if err != nil {
+		t.Fatalf("read init.bash: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "entry.sh") {
+		t.Error("init.bash must reference entry.sh")
+	}
+	if !strings.Contains(content, "helpers/aliases") {
+		t.Error("init.bash must source helpers/aliases")
+	}
+	if !strings.Contains(content, "installed/") {
+		t.Error("init.bash must reference installed/ layout")
+	}
+}
+
 // TestRootBuilds is a cheap sanity check that the entire command tree
 // constructs without panicking.
 func TestRootBuilds(t *testing.T) {
