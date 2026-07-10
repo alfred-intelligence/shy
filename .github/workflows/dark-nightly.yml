@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   gate:
-    uses: alfred-intelligence/.github-workflows/.github/workflows/mnab-gate.yml@4dd163573efacc95160b08f7669625da5d29651e # ci/mnab-gate-gradient PR#5, pending merge — repin on merge
+    uses: alfred-intelligence/.github-workflows/.github/workflows/mnab-gate.yml@e268c353956f159d413f79f16cf835622d0ffb70 # ci/mnab-gate-gradient PR#5, pending merge — repin on merge
     with:
       channel: dark
       nightly-dark: true
