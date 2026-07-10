@@ -50,7 +50,7 @@ jobs:
   # "pin to main" so the gradient can be proven end-to-end on shy first.
   gate:
     needs: channel
-    uses: alfred-intelligence/.github-workflows/.github/workflows/mnab-gate.yml@e268c353956f159d413f79f16cf835622d0ffb70 # ci/mnab-gate-gradient PR#5, pending merge
+    uses: alfred-intelligence/.github-workflows/.github/workflows/mnab-gate.yml@9763642610b3559a51c2f37e087d0b240581932a # ci/mnab-gate-gradient PR#5, pending merge
     with:
       channel: ${{ needs.channel.outputs.channel }}
       go-version-file: go.mod
