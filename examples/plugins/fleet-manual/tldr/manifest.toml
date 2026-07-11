@@ -1,0 +1,20 @@
+name = "fleet-manual-tldr"
+version = "0.1.0"
+description = "5-line tldr summary for one fleet colleague — shy tldr <colleague>"
+license = "MPL-2.0"
+type = "plugin"
+command = "tldr"
+entry = "./tldr.sh"
+
+[source]
+repo = "alfred-intelligence/shy/examples/plugins/fleet-manual/tldr"
+
+[requires]
+bash = ">=4"
+
+[capabilities]
+# See man/manifest.toml for why glow/bat aren't declared as
+# [[dependencies]] here.
+binaries = ["awk", "sed", "grep"]
+network = []
+filesystem = ["~/.claude/agents"]

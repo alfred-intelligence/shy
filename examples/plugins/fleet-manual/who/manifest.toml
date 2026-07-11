@@ -1,0 +1,20 @@
+name = "fleet-manual-who"
+version = "0.1.0"
+description = "Grep-based colleague routing suggestion for a task phrase — shy who <phrase>"
+license = "MPL-2.0"
+type = "plugin"
+command = "who"
+entry = "./who.sh"
+
+[source]
+repo = "alfred-intelligence/shy/examples/plugins/fleet-manual/who"
+
+[requires]
+bash = ">=4"
+
+[capabilities]
+# See man/manifest.toml for why glow/bat aren't declared as
+# [[dependencies]] here.
+binaries = ["awk", "sed", "grep"]
+network = []
+filesystem = ["~/.claude/agents"]

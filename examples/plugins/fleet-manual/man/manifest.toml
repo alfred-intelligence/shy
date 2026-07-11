@@ -1,0 +1,26 @@
+name = "fleet-manual-man"
+version = "0.1.0"
+description = "Full charter view for one fleet colleague — shy man <colleague>"
+license = "MPL-2.0"
+type = "plugin"
+command = "man"
+entry = "./man.sh"
+
+[source]
+repo = "alfred-intelligence/shy/examples/plugins/fleet-manual/man"
+
+[requires]
+bash = ">=4"
+
+[capabilities]
+# Reserved for v2 sandboxing; v1 parses and ignores. Declared here as
+# accurate documentation for a future `shy audit` run. glow/bat are
+# deliberately NOT listed as [[dependencies]] — that schema
+# (source/constraint/type, see internal/manifest/manifest.go) is for
+# pulling in other shy packages, not soft-optional system binaries;
+# there is no manifest field for "recommended external binary" today.
+# The optional glow/bat/cat fallback chain lives in _lib.sh's
+# fleet_render instead.
+binaries = ["awk", "sed", "grep"]
+network = []
+filesystem = ["~/.claude/agents"]
