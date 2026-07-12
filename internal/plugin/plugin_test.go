@@ -3,11 +3,13 @@ package plugin
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/alfred-intelligence/shy/internal/cache"
+	"github.com/alfred-intelligence/shy/internal/install"
 	"github.com/alfred-intelligence/shy/internal/paths"
 )
 
@@ -53,10 +55,83 @@ repo = "alice/gh-clone"
 	}
 }
 
+// TestDiscoverMultiItemPlugin exercises Discover the way install.Bundle
+// actually lays a multi-item collection on disk: one directory per item
+// (installed/@ns/<item.Name>/), each carrying a copy of the *whole*
+// collection manifest.toml (installScriptOrPlugin copies manifest.toml +
+// README into every item's directory so `shy list`/`shy info` still see
+// sibling items). Regression coverage for the multi-item-manifest
+// dispatch bug: Discover used to replay every item in that manifest once
+// per directory it found it in, instead of scoping to the directory's
+// own item — see TestMultiItemDispatchNoCrossItemMisroute for the
+// install.Bundle -> Discover -> Lookup pipeline version of this same bug.
 func TestDiscoverMultiItemPlugin(t *testing.T) {
 	home := t.TempDir()
-	dir := paths.PluginDir(home, "bob", "tools")
-	writeManifest(t, dir, `
+	collection := `
+name = "tools"
+version = "0.1.0"
+
+[source]
+repo = "bob/tools"
+
+[[items]]
+name = "do-x"
+type = "plugin"
+command = "do-x"
+path = "./do-x.sh"
+
+[[items]]
+name = "do-y"
+type = "plugin"
+command = "do-y"
+path = "./do-y.sh"
+`
+	dirX := paths.PluginDir(home, "bob", "do-x")
+	dirY := paths.PluginDir(home, "bob", "do-y")
+	writeManifest(t, dirX, collection)
+	writeManifest(t, dirY, collection)
+	os.WriteFile(filepath.Join(dirX, paths.EntryPoint), []byte("#!/usr/bin/env bash\n"), 0o755)
+	os.WriteFile(filepath.Join(dirY, paths.EntryPoint), []byte("#!/usr/bin/env bash\n"), 0o755)
+
+	entries, err := Discover(home)
+	if err != nil {
+		t.Fatalf("discover: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entries=%d, want 2 (got: %+v)", len(entries), entries)
+	}
+	byCommand := map[string]Entry{}
+	for _, e := range entries {
+		byCommand[e.Command] = e
+	}
+	if e, ok := byCommand["do-x"]; !ok || e.EntryScript != filepath.Join(dirX, paths.EntryPoint) {
+		t.Errorf("do-x entry wrong (must point at its own directory): %+v", e)
+	}
+	if e, ok := byCommand["do-y"]; !ok || e.EntryScript != filepath.Join(dirY, paths.EntryPoint) {
+		t.Errorf("do-y entry wrong (must point at its own directory): %+v", e)
+	}
+}
+
+// TestMultiItemDispatchNoCrossItemMisroute is the end-to-end regression
+// test for the multi-item-manifest dispatch bug: install a real
+// multi-item plugin collection through install.Bundle (the actual code
+// path `shy install` uses), rebuild the dispatch cache the way `shy
+// <command>` does, and verify each command executes ITS OWN script.
+//
+// Before the fix, Discover replayed every item in the shared
+// manifest.toml once per item directory. Because EntryScript always
+// resolves to paths.EntryPoint (this directory's own entry.sh — see
+// TestDispatchResolvesEntryPoint), the replayed sibling entries pointed
+// at the WRONG script: `shy do-y` would silently execute do-x's
+// entry.sh whenever Lookup's first match for "do-y" came from do-x's
+// directory (alphabetically first). That is a silent wrong-command
+// execution, not a loud failure — the most dangerous shape of dispatch
+// bug.
+func TestMultiItemDispatchNoCrossItemMisroute(t *testing.T) {
+	src := t.TempDir()
+	home := t.TempDir()
+
+	writeManifest(t, src, `
 name = "tools"
 version = "0.1.0"
 
@@ -75,15 +150,34 @@ type = "plugin"
 command = "do-y"
 path = "./do-y.sh"
 `)
-	os.WriteFile(filepath.Join(dir, "do-x.sh"), []byte("#!/usr/bin/env bash\n"), 0o755)
-	os.WriteFile(filepath.Join(dir, "do-y.sh"), []byte("#!/usr/bin/env bash\n"), 0o755)
+	os.WriteFile(filepath.Join(src, "do-x.sh"), []byte("#!/usr/bin/env bash\necho x\n"), 0o755)
+	os.WriteFile(filepath.Join(src, "do-y.sh"), []byte("#!/usr/bin/env bash\necho y\n"), 0o755)
 
-	entries, err := Discover(home)
-	if err != nil {
-		t.Fatalf("discover: %v", err)
+	c, _ := cache.Load(filepath.Join(home, "cache.json"))
+	if _, err := install.Bundle(src, install.Options{Home: home, Source: "bob/tools"}, c); err != nil {
+		t.Fatalf("bundle: %v", err)
 	}
-	if len(entries) != 2 {
-		t.Fatalf("entries=%d, want 2", len(entries))
+	if err := Rebuild(home, c); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if len(c.Plugins) != 2 {
+		t.Fatalf("cache plugins=%d, want 2 (got: %+v)", len(c.Plugins), c.Plugins)
+	}
+
+	dx, ok := Lookup(c, "do-x")
+	if !ok {
+		t.Fatal("lookup do-x: not found")
+	}
+	if out, err := exec.Command(dx.EntryScript).CombinedOutput(); err != nil || string(out) != "x\n" {
+		t.Errorf("shy do-x: got output %q, err %v (entryScript=%s) — want \"x\\n\"", out, err, dx.EntryScript)
+	}
+
+	dy, ok := Lookup(c, "do-y")
+	if !ok {
+		t.Fatal("lookup do-y: not found")
+	}
+	if out, err := exec.Command(dy.EntryScript).CombinedOutput(); err != nil || string(out) != "y\n" {
+		t.Errorf("shy do-y: got output %q, err %v (entryScript=%s) — want \"y\\n\" (a wrong output here means do-y is dispatching to do-x's script)", out, err, dy.EntryScript)
 	}
 }
 
