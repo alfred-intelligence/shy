@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   gate:
-    uses: alfred-intelligence/.github-workflows/.github/workflows/mnab-gate.yml@9763642610b3559a51c2f37e087d0b240581932a # ci/mnab-gate-gradient PR#5, pending merge — repin on merge
+    uses: alfred-intelligence/.github-workflows/.github/workflows/mnab-gate.yml@dfeae3831d1b27ebdcef77f20d79ca6e5bf94cf5 # .github-workflows main 2026-07-12, includes PR#5 + CodeQL code-injection fix (repinned from the original PR#5 SHA — see ci.yml's gate job for why)
     with:
       channel: dark
       nightly-dark: true

@@ -44,13 +44,21 @@ jobs:
   # per channel must require the matching subset — see docs/ci.md in
   # .github-workflows for the full table.
   #
-  # SHA pinned to alfred-intelligence/.github-workflows PR#5
-  # (ci/mnab-gate-gradient, unmerged as of this PR). REPIN to the merge SHA
-  # on main once that PR lands — this is a deliberate, flagged exception to
-  # "pin to main" so the gradient can be proven end-to-end on shy first.
+  # SHA pinned to alfred-intelligence/.github-workflows main, post-merge of
+  # PR#5 (ci/mnab-gate-gradient). Repinned from the original PR#5 SHA
+  # (9763642) to main HEAD because main also carries a CodeQL "Code
+  # injection" autofix landed right after the merge (mnab-gate.yml's dark
+  # build step used to run `${{ inputs.build-command }}` unsanitized in a
+  # `run:` step; fixed to an allowlisted case-match into an env var). The
+  # original PR#5 SHA predates that fix — verified via `gh api .../compare`
+  # (diverged from main, i.e. not an ancestor) and by diffing the file at
+  # both SHAs. Repin here even though shy's own dark-nightly caller never
+  # sets build-command (so it wasn't exploitable through this specific
+  # caller) — running a known-vulnerable pin when the fix is one commit
+  # away on main is not acceptable hygiene.
   gate:
     needs: channel
-    uses: alfred-intelligence/.github-workflows/.github/workflows/mnab-gate.yml@9763642610b3559a51c2f37e087d0b240581932a # ci/mnab-gate-gradient PR#5, pending merge
+    uses: alfred-intelligence/.github-workflows/.github/workflows/mnab-gate.yml@dfeae3831d1b27ebdcef77f20d79ca6e5bf94cf5 # .github-workflows main 2026-07-12, includes PR#5 + CodeQL code-injection fix
     with:
       channel: ${{ needs.channel.outputs.channel }}
       go-version-file: go.mod
