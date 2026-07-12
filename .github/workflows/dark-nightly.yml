@@ -1,0 +1,26 @@
+name: Dark nightly
+
+# Fully-automatic mnab dark-channel publish path (DECISIONS.md
+# "CI-grind-konvention", 2026-07-09). No operator gate: builds `after` at
+# 00:00 UTC only if there are new commits since the last dark tag, and
+# computes the vX.Y.Z-dark.<YYYYMMDD>+<shortsha> release name.
+#
+# workflow_dispatch exists so the cron path can be proven without waiting
+# for 00:00 — trigger manually and inspect the `gate` job's dark-build
+# outputs (skipped / dark-tag).
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    uses: alfred-intelligence/.github-workflows/.github/workflows/mnab-gate.yml@dfeae3831d1b27ebdcef77f20d79ca6e5bf94cf5 # .github-workflows main 2026-07-12, includes PR#5 + CodeQL code-injection fix (repinned from the original PR#5 SHA — see ci.yml's gate job for why)
+    with:
+      channel: dark
+      nightly-dark: true
+      go-version-file: go.mod

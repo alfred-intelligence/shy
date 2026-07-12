@@ -1,21 +1,66 @@
 name: CI
 
+# mnab CI-gate-gradient proof (DECISIONS.md "CI-grind-konvention", 2026-07-09).
+# Gate intensity is derived from branch -> channel and handed to the org's
+# shared mnab-gate.yml, which composes go-bash-ci.yml for the gate bodies.
+# The two repo-specific extras below (goreleaser-check, plugin-dispatch-perf)
+# are NOT part of the shared gradient contract — they stay local, but are now
+# gated to skip on the dark channel so `after` keeps the "near-zero gates"
+# promise instead of quietly still paying the old full toll.
+
 on:
   push:
-    branches: [main, next]
+    branches: [before, main, next, after]
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  # Delegate go-test / go-lint / shell-lint to the org reusable workflow.
-  # Emitted contexts: "ci / go-test", "ci / go-lint", "ci / shell-lint".
-  # These are the names branch protection must require — not the bare job names.
-  # Ref pinned to commit SHA so supply-chain drift is caught at review time.
-  ci:
-    uses: alfred-intelligence/.github-workflows/.github/workflows/go-bash-ci.yml@854faf25fdc8cd1bd10bbd5030abd40a6486040c # go-bash-ci@main 2026-06-30
+  # Maps the branch this run targets to its mnab release channel. Uses
+  # head_ref for PRs (the branch being merged FROM) and ref_name for pushes.
+  channel:
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.map.outputs.channel }}
+    steps:
+      - id: map
+        env:
+          REF_NAME: ${{ github.head_ref || github.ref_name }}
+        run: |
+          case "$REF_NAME" in
+            before) echo "channel=patch" >> "$GITHUB_OUTPUT" ;;
+            main)   echo "channel=stable" >> "$GITHUB_OUTPUT" ;;
+            next)   echo "channel=light" >> "$GITHUB_OUTPUT" ;;
+            after)  echo "channel=dark" >> "$GITHUB_OUTPUT" ;;
+            *)      echo "channel=light" >> "$GITHUB_OUTPUT" ;;  # feature branches default to light's bar
+          esac
+
+  # Delegate the gate gradient to the org reusable workflow. Emitted contexts
+  # vary by channel: dark -> "gate / conventional-commits" + "gate /
+  # dark-build"; light -> "gate / conventional-commits" + "gate / light-gates
+  # / go-test" + "... / go-lint"; stable+patch -> "gate / conventional-commits"
+  # + "gate / full-gauntlet / go-test|go-lint|shell-lint". Branch protection
+  # per channel must require the matching subset — see docs/ci.md in
+  # .github-workflows for the full table.
+  #
+  # SHA pinned to alfred-intelligence/.github-workflows main, post-merge of
+  # PR#5 (ci/mnab-gate-gradient). Repinned from the original PR#5 SHA
+  # (9763642) to main HEAD because main also carries a CodeQL "Code
+  # injection" autofix landed right after the merge (mnab-gate.yml's dark
+  # build step used to run `${{ inputs.build-command }}` unsanitized in a
+  # `run:` step; fixed to an allowlisted case-match into an env var). The
+  # original PR#5 SHA predates that fix — verified via `gh api .../compare`
+  # (diverged from main, i.e. not an ancestor) and by diffing the file at
+  # both SHAs. Repin here even though shy's own dark-nightly caller never
+  # sets build-command (so it wasn't exploitable through this specific
+  # caller) — running a known-vulnerable pin when the fix is one commit
+  # away on main is not acceptable hygiene.
+  gate:
+    needs: channel
+    uses: alfred-intelligence/.github-workflows/.github/workflows/mnab-gate.yml@dfeae3831d1b27ebdcef77f20d79ca6e5bf94cf5 # .github-workflows main 2026-07-12, includes PR#5 + CodeQL code-injection fix
     with:
+      channel: ${{ needs.channel.outputs.channel }}
       go-version-file: go.mod
       # Widen shellcheck coverage beyond the former install.sh+init/init.bash
       # to include internal/cmd/init.bash and all scripts/ shell files.
@@ -29,8 +74,12 @@ jobs:
         scripts/bench-plugin-dispatch.sh
         scripts/setup-permissions.sh
 
-  # Emitted context: "goreleaser-check".
+  # Emitted context: "goreleaser-check". Repo-specific, stays local. Skipped
+  # on dark: goreleaser-check is a release-shape check, not "does it build",
+  # and dark's whole point is paying near-zero gate cost per push.
   goreleaser-check:
+    needs: channel
+    if: needs.channel.outputs.channel != 'dark'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -42,8 +91,11 @@ jobs:
           version: latest
           args: check
 
-  # Emitted context: "plugin-dispatch-perf".
+  # Emitted context: "plugin-dispatch-perf". Repo-specific, stays local.
+  # Skipped on dark for the same reason as goreleaser-check above.
   plugin-dispatch-perf:
+    needs: channel
+    if: needs.channel.outputs.channel != 'dark'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
