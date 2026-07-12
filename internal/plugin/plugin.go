@@ -104,9 +104,24 @@ func parseManifest(dir, namespace, name string) ([]Entry, error) {
 			Description: m.Description,
 		})
 	}
-	// Multi-item form: items with type=plugin.
+	// Multi-item form: install.Bundle gives every item in a collection
+	// its own directory named after item.Name (installScriptOrPlugin),
+	// but copies the *whole* collection manifest.toml into each of
+	// those directories so `shy list`/`shy info` can still see sibling
+	// items. That means this function runs once per item directory yet
+	// re-parses the same multi-item manifest each time.
+	//
+	// Looping over every item unconditionally — as this code used to —
+	// replays all N items once per discovered directory, producing N*N
+	// entries. Worse than the raw duplicate count: every one of those
+	// entries pointed at THIS directory's entry.sh (paths.EntryPoint is
+	// fixed, not item-specific), so a lookup for a sibling command
+	// silently dispatched to the wrong script — e.g. `shy do-y` running
+	// do-x's entry.sh because Discover walked do-x's directory first and
+	// replayed do-y's manifest entry against do-x's own entry.sh path.
+	// Scope to the single item that actually lives in this directory.
 	for _, it := range m.Items {
-		if it.Type != "plugin" || it.Command == "" {
+		if it.Type != "plugin" || it.Command == "" || it.Name != name {
 			continue
 		}
 		out = append(out, Entry{
