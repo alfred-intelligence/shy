@@ -5,6 +5,27 @@ All notable changes to shy are documented here. Entries follow
 file is maintained by [release-please](https://github.com/googleapis/release-please)
 from `next`.
 
+## [0.4.0](https://github.com/alfred-intelligence/shy/compare/v0.3.1...v0.4.0) (2026-07-13)
+
+
+### Features
+
+* **ground0:** Pure-bash shy management layer at §10 parity ([428a8f8](https://github.com/alfred-intelligence/shy/commit/428a8f892634d85f5f6db3fc95c0f5b7dcae4385))
+* **ground0:** Pure-bash shy management layer at §10 parity ([09be6a0](https://github.com/alfred-intelligence/shy/commit/09be6a0c3c7ee963889311eeca26ba3d012b699d))
+
+
+### Bug Fixes
+
+* **ci:** Dependabot auto-merge workflow can never satisfy its own gates ([2386955](https://github.com/alfred-intelligence/shy/commit/2386955dba98f31bd8fc1e8fdeb8ed97070af082))
+* **ci:** Dependabot auto-merge workflow can never satisfy its own gates ([137bd8a](https://github.com/alfred-intelligence/shy/commit/137bd8ade1214b278b43af15e50ae90c575d1d0d))
+* **ci:** Repin mnab-gate.yml to .github-workflows main (post-merge, CodeQL-fixed) ([45fa581](https://github.com/alfred-intelligence/shy/commit/45fa581c51bf283f99aa073f1586e2924e42b080))
+* **ci:** Repin mnab-gate.yml to workflows PR[#5](https://github.com/alfred-intelligence/shy/issues/5)'s fixed SHA ([0e24c1c](https://github.com/alfred-intelligence/shy/commit/0e24c1cb8fa0b148e36158f9eb9198b41d137922))
+* **install:** Write script entry as entry.sh, stop sibling fan-out ([dc9b2a0](https://github.com/alfred-intelligence/shy/commit/dc9b2a0f0c5d5951a998b7f9446196e11237be43))
+* **install:** Write script entry as entry.sh, stop sibling fan-out ([d17df5c](https://github.com/alfred-intelligence/shy/commit/d17df5ca52e1ca7db3759d05adfabdc902bda068))
+* **plugin:** Resolve dispatch + init.bash to entry.sh ([e7c004b](https://github.com/alfred-intelligence/shy/commit/e7c004be1a7bdb221fc7a421e559245231a55f47))
+* **plugin:** Scope multi-item dispatch to the item's own directory ([547f42f](https://github.com/alfred-intelligence/shy/commit/547f42f761b6a6e05432c4c5f9ee94a7377ea8c8))
+* **plugin:** Scope multi-item dispatch to the item's own directory ([c58bbbb](https://github.com/alfred-intelligence/shy/commit/c58bbbb9e37c6329c2d5c507a0e72314c1a9fd02))
+
 ## [0.3.1](https://github.com/alfred-intelligence/shy/compare/v0.3.0...v0.3.1) (2026-06-23)
 
 
