@@ -4,6 +4,12 @@
 
 export SHY_HOME="${SHY_HOME:-$HOME/.shy}"
 
+# Add shy's own binary to PATH if not already present.
+case ":$PATH:" in
+    *":$SHY_HOME/bin:"*) ;;
+    *) export PATH="$SHY_HOME/bin:$PATH" ;;
+esac
+
 # Source files in a flat directory; skip _-prefixed; tolerate per-file errors.
 _shy_source_flat() {
     local dir="$1"
