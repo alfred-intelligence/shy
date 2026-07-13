@@ -1,7 +1,15 @@
 name: Auto-merge Dependabot
 
+# NOTE: pull_request_target (not pull_request) is required here. GitHub
+# auto-downgrades the GITHUB_TOKEN to read-only + no secrets for ANY
+# `pull_request`-triggered run whose actor is dependabot[bot], regardless of
+# the `permissions:` block below -- so `gh pr review --approve` / `gh pr
+# merge` calls silently 403 under `pull_request`. pull_request_target runs
+# with the base ref's token permissions instead and is safe here because we
+# never check out the PR's head (dependabot/fetch-metadata only reads PR
+# metadata via the API; nothing from the PR diff is executed).
 on:
-  pull_request:
+  pull_request_target:
     branches: [next]
 
 permissions:
@@ -15,7 +23,22 @@ jobs:
     steps:
       - id: meta
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
-      - name: Approve and enable auto-merge for eligible PRs
+      - name: Approve eligible PRs
+        if: |
+          (steps.meta.outputs.package-ecosystem == 'gomod' || steps.meta.outputs.package-ecosystem == 'github_actions') &&
+          (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+           steps.meta.outputs.update-type == 'version-update:semver-minor')
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Required-review branch protection on `next` needs an actual
+        # approval -- `gh pr merge --auto` alone never satisfies that gate,
+        # it only tells GitHub "merge once all requirements are met" without
+        # meeting the review requirement itself. This step was missing
+        # entirely before this fix, so no dependabot PR against `next` could
+        # ever clear review, even once the token-permission fix above lands.
+        run: gh pr review --approve "$PR_URL"
+      - name: Enable auto-merge for eligible PRs
         if: |
           (steps.meta.outputs.package-ecosystem == 'gomod' || steps.meta.outputs.package-ecosystem == 'github_actions') &&
           (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
