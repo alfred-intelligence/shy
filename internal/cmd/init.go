@@ -17,7 +17,8 @@ import (
 )
 
 func newInitCmd() *cobra.Command {
-	return &cobra.Command{
+	var noBashrc bool
+	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Set up $HOME/.shy/ and wire it into ~/.bashrc",
 		Long: `Create the directory layout under $HOME/.shy/, copy any seed from
@@ -25,15 +26,17 @@ func newInitCmd() *cobra.Command {
 to ~/.bashrc, and bootstrap shy's own bash completion.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runInit(cmd.OutOrStdout())
+			return runInit(cmd.OutOrStdout(), noBashrc)
 		},
 	}
+	cmd.Flags().BoolVar(&noBashrc, "no-bashrc", false, "skip adding the source line to ~/.bashrc")
+	return cmd
 }
 
 // SudoHint is printed when shy init is invoked as root.
 const SudoHint = "shy init: refusing to run as root.\nshy init: to reset shy across all users, run: sudo shy system-reset"
 
-func runInit(out io.Writer) error {
+func runInit(out io.Writer, noBashrc bool) error {
 	if os.Geteuid() == 0 {
 		return errors.New(SudoHint)
 	}
@@ -43,7 +46,7 @@ func runInit(out io.Writer) error {
 	}
 
 	created := []string{}
-	if mkdirReport(home, 0o700, &created); err != nil {
+	if err := mkdirReport(home, 0o700, &created); err != nil {
 		return err
 	}
 	for _, d := range paths.Subdirs(home) {
@@ -66,9 +69,12 @@ func runInit(out io.Writer) error {
 		wroteInit = true
 	}
 
-	bashrcUpdated, err := ensureBashrcLine()
-	if err != nil {
-		return err
+	bashrcUpdated := false
+	if !noBashrc {
+		bashrcUpdated, err = ensureBashrcLine()
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := bootstrapShyCompletion(home); err != nil {
@@ -84,9 +90,12 @@ func runInit(out io.Writer) error {
 	} else {
 		fmt.Fprintln(out, "  init.bash:      already present")
 	}
-	if bashrcUpdated {
+	switch {
+	case noBashrc:
+		fmt.Fprintln(out, "  .bashrc:        skipped (--no-bashrc)")
+	case bashrcUpdated:
 		fmt.Fprintln(out, "  .bashrc:        source line added")
-	} else {
+	default:
 		fmt.Fprintln(out, "  .bashrc:        already configured")
 	}
 	return nil
