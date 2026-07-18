@@ -26,9 +26,11 @@ archives:
       - LICENSE
       - README.md
 
+# Single SHA256SUMS file; install.sh downloads it and verifies the asset
+# before unpacking (falls back to per-asset .sha256 for releases < v0.3).
 checksum:
   algorithm: sha256
-  split: true
+  name_template: SHA256SUMS
 
 nfpms:
   - id: packages

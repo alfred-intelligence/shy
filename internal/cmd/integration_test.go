@@ -20,7 +20,7 @@ func TestInitWritesLayout(t *testing.T) {
 	t.Setenv("SHY_TEST_BASHRC", bashrc)
 
 	out := &bytes.Buffer{}
-	if err := runInit(out); err != nil {
+	if err := runInit(out, false); err != nil {
 		t.Fatalf("init: %v", err)
 	}
 	for _, sub := range []string{
@@ -48,7 +48,7 @@ func TestInitWritesLayout(t *testing.T) {
 
 	// Idempotent: re-run should not duplicate the bashrc line.
 	out.Reset()
-	if err := runInit(out); err != nil {
+	if err := runInit(out, false); err != nil {
 		t.Fatalf("second init: %v", err)
 	}
 	data2, _ := os.ReadFile(bashrc)
@@ -64,13 +64,36 @@ func TestInitWritesLayout(t *testing.T) {
 	}
 }
 
+// TestInitNoBashrc verifies that --no-bashrc leaves .bashrc untouched
+// while still creating the layout.
+func TestInitNoBashrc(t *testing.T) {
+	home := t.TempDir()
+	bashrc := filepath.Join(t.TempDir(), ".bashrc")
+	t.Setenv("SHY_HOME", home)
+	t.Setenv("SHY_TEST_BASHRC", bashrc)
+
+	out := &bytes.Buffer{}
+	if err := runInit(out, true); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if _, err := os.Stat(bashrc); !os.IsNotExist(err) {
+		t.Errorf(".bashrc should not exist, stat err: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "init.bash")); err != nil {
+		t.Errorf("init.bash missing: %v", err)
+	}
+	if !strings.Contains(out.String(), "skipped (--no-bashrc)") {
+		t.Errorf("output missing skip notice:\n%s", out.String())
+	}
+}
+
 // TestEndToEndAliasAndList walks the typical onboarding: shy alias →
 // shy list --json. The data round-trips through cache.json.
 func TestEndToEndAliasAndList(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("SHY_HOME", home)
 	t.Setenv("SHY_TEST_BASHRC", filepath.Join(t.TempDir(), ".bashrc"))
-	if err := runInit(&bytes.Buffer{}); err != nil {
+	if err := runInit(&bytes.Buffer{}, false); err != nil {
 		t.Fatalf("init: %v", err)
 	}
 

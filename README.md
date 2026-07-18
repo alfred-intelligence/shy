@@ -19,10 +19,22 @@ curl -fsSL https://raw.githubusercontent.com/alfred-intelligence/shy/main/instal
 
 The installer lands the binary at `$HOME/.shy/bin/shy` and runs
 `shy init`, which sets up `$HOME/.shy/` and adds one source line to
-`~/.bashrc`.
+`~/.bashrc` (it asks first when run in a terminal; pass `--no-bashrc`
+to skip). Downloads are verified against the release `SHA256SUMS`
+before unpacking.
 
-System-wide installation via `.deb`/`.rpm` packages is available from
-the [GitHub Releases](https://github.com/alfred-intelligence/shy/releases)
+Installer flags (pass after `bash -s --`):
+
+```bash
+# system-wide: binary to /usr/local/bin/shy, no per-user setup
+curl -fsSL https://raw.githubusercontent.com/alfred-intelligence/shy/main/install.sh | sudo bash -s -- --system
+
+# user install without touching ~/.bashrc
+curl -fsSL https://raw.githubusercontent.com/alfred-intelligence/shy/main/install.sh | bash -s -- --no-bashrc
+```
+
+System-wide installation via `.deb`/`.rpm` packages is also available
+from the [GitHub Releases](https://github.com/alfred-intelligence/shy/releases)
 page.
 
 ## Usage
