@@ -1,0 +1,42 @@
+name = "completion-gen"
+version = "0.1.0"
+description = "Generate shell completions for an arbitrary binary by introspecting it — native passthrough first (wider than shy's own completion-add probes), --help-parsing fallback when the tool has no self-generator. Candidate replacement for `shy completion add`."
+license = "MPL-2.0"
+type = "plugin"
+command = "completion-gen"
+entry = "./entry.sh"
+
+[source]
+repo = "alfred-intelligence/shy/examples/plugins/completion-gen"
+
+[requires]
+bash = ">=4"
+# No fixed binary dependency: the introspected tool is a runtime argument,
+# not a static dependency of the plugin itself (see README "capabilities
+# note" for why `binaries` below stays empty despite shelling out).
+binaries = []
+
+[capabilities]
+# Reserved for v2 sandboxing; v1 parses and ignores (docs/04-agent-
+# instructions.md "[capabilities] is reserved, not enforced"). Declared
+# here as documentation for plugin authors and for the future shy-audit
+# plugin (docs/02-long-horizon.md Phase 10).
+#
+# Deliberately NOT listing a fixed binaries/network/filesystem set: this
+# plugin's entire job is to exec an ARBITRARY caller-supplied binary and
+# read its --help text, so a static capability list would either be
+# meaninglessly empty or dishonestly unbounded. Flagged explicitly in the
+# README so shy-audit's static-vs-declared comparison (when it lands)
+# knows to special-case introspection-style plugins rather than reading
+# an empty list as "declares nothing, shells out to nothing."
+binaries = []
+network = []
+filesystem = ["$SHY_HOME/helpers/completions"]
+
+# Custom, plugin-owned section (never a shy-core schema field) — the
+# convention docs/04-agent-instructions.md documents for plugin-specific
+# metadata ("plugins declare their own sections, e.g. [kebab-conformance]").
+# Surfaced verbatim to plugins/tooling via `shy info --json` under `unknown`.
+[completion-gen-meta]
+kind = "introspection-plugin"
+graduation-candidate = "internal/cmd/completion.go (shy completion add)"
