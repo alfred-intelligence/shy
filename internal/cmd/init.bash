@@ -10,6 +10,27 @@ case ":$PATH:" in
     *) export PATH="$SHY_HOME/bin:$PATH" ;;
 esac
 
+# Source a single file, then restore this shell's u/e/pipefail options to
+# whatever they were BEFORE the source -- a sourced file runs in the current
+# shell (unlike a subprocess), so any `set -u`/`set -e`/`set -o pipefail` it
+# leaves on would otherwise leak into the interactive shell that sourced
+# init.bash, breaking unrelated things (e.g. bash completions tripping over
+# `set -u` on an unset variable). Belt-and-suspenders: protects against every
+# current AND future plugin, on top of any per-plugin fix.
+_shy_safe_source() {
+    local f="$1"
+    local saved_opts="$-"
+    local saved_pipefail="off"
+    [[ "$(set -o | grep '^pipefail')" == *on ]] && saved_pipefail="on"
+    # shellcheck source=/dev/null
+    source "$f" 2>/dev/null || printf 'shy: failed to source %s\n' "$f" >&2
+    [[ "$saved_opts" == *u* ]] || set +u
+    [[ "$saved_opts" == *e* ]] || set +e
+    if [[ "$saved_pipefail" == "off" ]]; then
+        set +o pipefail
+    fi
+}
+
 # Source files in a flat directory; skip _-prefixed; tolerate per-file errors.
 _shy_source_flat() {
     local dir="$1"
@@ -18,8 +39,7 @@ _shy_source_flat() {
     for f in "$dir"/*; do
         [[ -f "$f" ]] || continue
         [[ "$(basename "$f")" == _* ]] && continue
-        # shellcheck source=/dev/null
-        source "$f" 2>/dev/null || printf 'shy: failed to source %s\n' "$f" >&2
+        _shy_safe_source "$f"
     done
 }
 
@@ -37,8 +57,7 @@ _shy_source_installed_scripts() {
             [[ -d "$item_dir" ]] || continue
             entry="$item_dir/entry.sh"
             [[ -f "$entry" ]] || continue
-            # shellcheck source=/dev/null
-            source "$entry" 2>/dev/null || printf 'shy: failed to source %s\n' "$entry" >&2
+            _shy_safe_source "$entry"
         done
     done
 }
